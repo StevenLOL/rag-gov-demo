@@ -19,11 +19,22 @@
 
 ## 快速开始（v1，零云依赖）
 
+**环境用 conda（本机主力环境），不要另建 venv：**
+
 ```bash
+conda create -n ragdemo python=3.12 -y
+conda activate ragdemo
 pip install -r requirements.txt
+
 uvicorn api.main:app --reload          # 或者 make run
 # 打开 http://localhost:8000/docs 试 POST /ask
 ```
+
+> 环境约定（2026-09-29 用户明确要求）：一律用 **conda**，环境名 `ragdemo`。
+> 之前用过 `~/.workbuddy/binaries/python/envs/default` 这个托管 venv——
+> 它不在 conda 管理范围内、路径又长，已弃用；脚本与文档中的硬编码路径已清除。
+> 向量后端额外需要 `pip install sentence-transformers`（会拉 torch，约 2.5GB，可选）；
+> 不装则自动回退 BM25，全部测试仍可通过（向量用例 skip）。
 
 无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
 

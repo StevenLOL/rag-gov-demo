@@ -1,11 +1,15 @@
 # rag-gov-demo 开发快捷命令
 # 用法：make <target>   （Windows Git Bash 下可用）
 
-.PHONY: run test eval clean
+.PHONY: run test eval ui clean
 
 # 启动 API（开发模式，自动重载）
 run:
 	uvicorn api.main:app --reload --port 8000
+
+# 启动演示 UI（需先 make run）
+ui:
+	streamlit run ui/streamlit_app.py
 
 # 跑全部测试（含治理 schema 测试；v3 用例标记 skip）
 test:

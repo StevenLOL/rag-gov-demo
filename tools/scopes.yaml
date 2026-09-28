@@ -39,3 +39,24 @@ tools:
     risk: high
     data_class: public
     description: 将内容发送至公有云 LLM API（对照实验专用；涉敏内容必须被拒绝）
+
+  # ---- v3b 新增：游戏美术素材（把「抽图」这个动作纳入治理）----
+  # 权限闸（本文件）+ 授权闸（asset_policy.yaml）+ 风险闸（risk）三道，
+  # 说明见 ragdemo/policy.py 头部。
+  list_asset_packages:
+    scope: [asset:read]
+    risk: low
+    data_class: internal
+    description: 列出已登记素材包及其授权用途（只读元数据，供 agent 决定下一步）
+
+  scan_asset_package:
+    scope: [asset:read]
+    risk: low
+    data_class: internal
+    description: 只读扫描游戏美术素材包（总数/分类分布/抽样路径），不写任何文件
+
+  extract_game_assets:
+    scope: [asset:read, export:write]
+    risk: high
+    data_class: internal
+    description: 批量导出素材到磁盘（真实写副作用：须先过授权闸，再经人工批准）

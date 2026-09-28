@@ -50,6 +50,10 @@ uvicorn api.main:app --reload          # 或者 make run
 ## Roadmap
 
 - [x] v1 骨架：语料/分块/BM25 检索/引用/拒答/审计 JSONL/CI
-- [ ] v1 收尾：golden set 扩到 20 题，Ollama 生成接通
-- [ ] v2：Dockerfile+compose 实测、Postgres 会话库、Streamlit UI、RAI.md
-- [ ] v3：LangGraph 化（interrupt/Command/thread_id）、MCP 接入、越权测试、IMDA 身份卡
+- [x] v1 评估：5 份语料 + 20 题 golden set（recall@5 20/20，top1 19/20）
+- [x] v3a：LangGraph 治理编排最小可运行（interrupt 审批 / 越权拒绝 / 副作用恰执行一次，行为测试进 CI）
+- [x] v2 UI：Streamlit 演示界面（问答/引用/拒答/审计）
+- [ ] v1 收尾：Ollama 生成接通实测
+- [ ] v2：Dockerfile+compose 实测、Postgres 会话库、RAI.md 充实
+- [ ] v3b：Streamlit 审批卡（approve/reject/edit/respond）+ devmap MCP 工具接入
+- [ ] v3c：PostgresSaver 替换 InMemorySaver + 审计表迁移

@@ -7,9 +7,9 @@
 
 | 层 | 一句话 | 状态 |
 |---|---|---|
-| v1 可信检索基座 | 引用溯源 + 拒答机制，一条命令起 | **本仓库当前状态（骨架已落地）** |
-| v2 交付成熟层 | Docker 三容器 + CI + Postgres + eval 数字 | 结构已铺好，实现中 |
-| v3 可控自治层 | LangGraph interrupt 审批 + 最小权限 + IMDA 治理产物 | 骨架占位（`agents/graph.py`） |
+| v1 可信检索基座 | 引用溯源 + 拒答机制，一条命令起 | ✅ 已落地（5 语料 / 20 题 eval：recall@5 20/20，top1 19/20） |
+| v2 交付成熟层 | Docker 三容器 + CI + Postgres + Streamlit UI | 🟡 UI 已落地；容器实测/Postgres 进行中 |
+| v3 可控自治层 | LangGraph interrupt 审批 + 最小权限 + IMDA 治理产物 | 🟡 **v3a 已落地**（高风险 interrupt 审批/越权拒绝/副作用恰执行，治理行为测试进 CI）；v3b 审批卡 UI + MCP、v3c Postgres checkpointer 进行中 |
 
 ## 为什么是这个定位
 

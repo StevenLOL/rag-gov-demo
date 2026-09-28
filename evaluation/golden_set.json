@@ -1,8 +1,22 @@
 [
   {"question": "高风险动作执行前需要什么流程", "expected_source": "agent_governance_basics.md"},
-  {"question": "公务员使用 AI 谁负责内容", "expected_source": "gov_ai_usage_rules.md"},
-  {"question": "涉密信息能不能发给云 API", "expected_source": "gov_ai_usage_rules.md"},
   {"question": "最小权限是什么意思", "expected_source": "agent_governance_basics.md"},
   {"question": "L2 自治级别是什么", "expected_source": "agent_governance_basics.md"},
-  {"question": "docker compose 启动哪些容器", "expected_source": "deploy_operations.md"}
+  {"question": "人工批准有哪几种决定类型", "expected_source": "agent_governance_basics.md"},
+  {"question": "L3 自治的前提条件", "expected_source": "agent_governance_basics.md"},
+  {"question": "agent 权限怎么声明", "expected_source": "agent_governance_basics.md"},
+  {"question": "公务员使用 AI 谁负责内容", "expected_source": "gov_ai_usage_rules.md"},
+  {"question": "涉密信息能不能发给云 API", "expected_source": "gov_ai_usage_rules.md"},
+  {"question": "数据分级有哪些级别", "expected_source": "gov_ai_usage_rules.md"},
+  {"question": "敏感数据在哪里处理", "expected_source": "gov_ai_usage_rules.md"},
+  {"question": "AI 产出可以直接当正式文件吗", "expected_source": "gov_ai_usage_rules.md"},
+  {"question": "docker compose 启动哪些容器", "expected_source": "deploy_operations.md"},
+  {"question": "审计日志怎么查询", "expected_source": "deploy_operations.md"},
+  {"question": "系统能不能完全离线部署", "expected_source": "deploy_operations.md"},
+  {"question": "员工违规使用 AI 怎么处理", "expected_source": "incident_response.md"},
+  {"question": "敏感数据进入未批准工具算什么事件", "expected_source": "incident_response.md"},
+  {"question": "事故复盘要产出什么", "expected_source": "incident_response.md"},
+  {"question": "接入新模型前要做什么评估", "expected_source": "model_management.md"},
+  {"question": "AI 用量异常怎么判定", "expected_source": "model_management.md"},
+  {"question": "模型退役时数据怎么清理", "expected_source": "model_management.md"}
 ]

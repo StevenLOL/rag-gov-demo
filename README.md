@@ -41,6 +41,18 @@ RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变�
 依赖缺失时自动回退 BM25 并打印提示。向量后端默认模型 `intfloat/multilingual-e5-small`（384 维，中英双语，~470MB）；
 国内建议先 `export HF_ENDPOINT=https://hf-mirror.com`。
 
+### 实测对比（20 题 golden set，语料 15 chunk）
+
+| 后端 | recall@5 | top1 |
+|---|---|---|
+| bm25 | 20/20 | **19/20** |
+| vector | 20/20 | **20/20** |
+| hybrid（RRF） | 20/20 | 19/20 |
+
+诚实解读：语料仅 15 个片段，三后端都已饱和——这组数字证明的是**工程管道打通**（后端可切换、指标可复跑），
+**不是"混合检索更强"**。向量后端补上了 BM25 唯一漏掉的那道 top1；混合检索在小语料上被 BM25 的排名拉回。
+语料扩到千级片段后对比才有分辨力——这是后续扩充方向（不夸大当前结论）。
+
 ## 组件与数据边界
 
 - 本地闭环：FastAPI + 本地 LLM(Ollama 类) + 本地 embedding/检索 + Postgres（v2/v3）+ 审计日志

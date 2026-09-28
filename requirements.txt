@@ -7,6 +7,11 @@ PyYAML>=6.0             # 解析 tools/scopes.yaml 权限白名单
 pytest>=8.0             # CI 测试（含治理行为测试）
 langgraph>=0.2          # v3 治理编排：interrupt()/Command()/checkpointer（官方原语，见 docs/068 复用判定）
 
+# v2 向量检索（可选：不安装时自动回退 BM25，零依赖依然可跑）
+# faiss-cpu>=1.8         # 本地向量索引（IndexFlatIP，归一化后内积=余弦）
+# sentence-transformers>=3.0  # 本地嵌入（默认 intfloat/multilingual-e5-small，384维）
+#   国内下载模型前建议：export HF_ENDPOINT=https://hf-mirror.com
+
 # 后续依赖（暂不装）
 # mcp>=1.0               # v3b：devmap MCP server 接入
 # streamlit>=1.40        # v2：演示 UI（本地已验证，CI 不跑 UI）

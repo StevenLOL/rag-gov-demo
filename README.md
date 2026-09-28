@@ -27,6 +27,20 @@ uvicorn api.main:app --reload          # 或者 make run
 
 无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
 
+## 检索后端（三选一，环境变量 `RETRIEVAL_BACKEND`）
+
+| 后端 | 依赖 | 说明 |
+|---|---|---|
+| `bm25`（默认） | 零 | 纯 Python BM25，双语分词（拉丁词 + CJK 单字/二元组）；k1=1.5, b=0.75 |
+| `vector` | faiss-cpu + sentence-transformers | FAISS `IndexFlatIP`；嵌入 `normalize_embeddings=True` → **内积 = 余弦** |
+| `hybrid` | 同上 | BM25 ⊕ 向量，**RRF 融合**（k=60，按排名不看分数）；覆盖率闸仍用 BM25 |
+
+```bash
+RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变量
+```
+依赖缺失时自动回退 BM25 并打印提示。向量后端默认模型 `intfloat/multilingual-e5-small`（384 维，中英双语，~470MB）；
+国内建议先 `export HF_ENDPOINT=https://hf-mirror.com`。
+
 ## 组件与数据边界
 
 - 本地闭环：FastAPI + 本地 LLM(Ollama 类) + 本地 embedding/检索 + Postgres（v2/v3）+ 审计日志
@@ -53,6 +67,7 @@ uvicorn api.main:app --reload          # 或者 make run
 - [x] v1 评估：5 份语料 + 20 题 golden set（recall@5 20/20，top1 19/20）
 - [x] v3a：LangGraph 治理编排最小可运行（interrupt 审批 / 越权拒绝 / 副作用恰执行一次，行为测试进 CI）
 - [x] v2 UI：Streamlit 演示界面（问答/引用/拒答/审计）
+- [x] v2 检索：FAISS 向量后端 + RRF 混合检索（依赖可选，缺失自动回退 BM25）
 - [ ] v1 收尾：Ollama 生成接通实测
 - [ ] v2：Dockerfile+compose 实测、Postgres 会话库、RAI.md 充实
 - [ ] v3b：Streamlit 审批卡（approve/reject/edit/respond）+ devmap MCP 工具接入

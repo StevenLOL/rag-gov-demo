@@ -27,6 +27,24 @@ uvicorn api.main:app --reload          # 或者 make run
 
 无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
 
+## 本地 LLM（Ollama）——v1 收尾已实测接通
+
+本机实测环境：Ollama 已装 + **granite4.2:3b**（3.7B，Q4_K_M，GTX 1060 6GB）。
+
+| 能力 | 说明 |
+|---|---|
+| 模型自动发现 | 查 `/api/tags`；配置模型本机没有时自动回退同系列/第一个可用模型（不会傻等超时） |
+| 启动预热 | 后台线程 `warmup()`，把模型载入常驻（`keep_alive=10m`） |
+| 思考型模型处理 | `think=false` + `num_predict=256`——**实测从 >60s 降到 1.7s** |
+| 降级 | 服务不可用/无模型时自动走抽取式引用模式，`/health` 里 `llm_available` 可见 |
+
+```bash
+curl -s localhost:8000/health
+# {"status":"ok","chunks":15,"retrieval_backend":"bm25",
+#  "llm_available":true,"llm_model":"granite4.2:3b"}
+```
+一键体检（含冷/热耗时与端到端问答）：`python scripts/009_检查Ollama与生成链路.py --api 8128`
+
 ## 检索后端（三选一，环境变量 `RETRIEVAL_BACKEND`）
 
 | 后端 | 依赖 | 说明 |

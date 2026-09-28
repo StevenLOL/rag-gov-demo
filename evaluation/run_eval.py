@@ -46,7 +46,8 @@ def run() -> list[dict]:
 if __name__ == "__main__":
     results = run()
     passed = sum(1 for r in results if r["recall_at_5"])
+    top1 = sum(1 for r in results if r["top1_source"] == r["expected_source"])
     for r in results:
         mark = "PASS" if r["recall_at_5"] else "MISS"
         print(f"[{mark}] {r['question']}  →  top1={r['top1_source']}")
-    print(f"\nrecall@5 = {passed}/{len(results)}")
+    print(f"\nrecall@5 = {passed}/{len(results)}    top1 = {top1}/{len(results)}")

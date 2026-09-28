@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# 运行时产物（审计日志保留目录结构，忽略内容）
+data/audit/*.jsonl
+
+# 本地向量索引缓存（如启用 FAISS 后端）
+*.faiss
+*.npy
+
+# 环境变量
+.env
+
+# OS
+Thumbs.db
+.DS_Store

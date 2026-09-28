@@ -1,0 +1,11 @@
+# v1 依赖（最小集，全部可离线审计的开源包）
+fastapi>=0.110          # 后端骨架：问答/审批/审计 API
+uvicorn>=0.29           # ASGI 服务器
+httpx>=0.27             # 调用本地 Ollama HTTP API（以及未来远端对照实验）
+pydantic>=2.6           # 请求/响应模型
+PyYAML>=6.0             # 解析 tools/scopes.yaml 权限白名单
+pytest>=8.0             # CI 测试（含 v3 治理测试占位）
+
+# v3 依赖（暂不装，见 README Roadmap；装了才能 import agents/graph.py）
+# langgraph>=0.2
+# mcp>=1.0

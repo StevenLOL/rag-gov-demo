@@ -1,0 +1,33 @@
+# 三容器编排（v2 目标形态；v1 可只用 app 单服务或直接 uvicorn 本地跑）
+# 数据边界：postgres 与 inference 数据全部落在本地 volume，不出域
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_URL=http://inference:11434   # 容器内走服务名
+      - POSTGRES_DSN=postgresql://ragdemo:ragdemo@postgres:5432/ragdemo
+    depends_on:
+      - postgres
+      - inference
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ragdemo
+      POSTGRES_PASSWORD: ragdemo
+      POSTGRES_DB: ragdemo
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # 会话 + v3 checkpointer + 审计表
+
+  inference:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama              # 模型权重本地缓存
+
+volumes:
+  pgdata:
+  ollama:

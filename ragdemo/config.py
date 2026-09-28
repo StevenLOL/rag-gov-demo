@@ -34,8 +34,17 @@ VECTOR_MIN_SCORE = float(os.getenv("VECTOR_MIN_SCORE", 0.35))
 # ---- 本地 LLM（Ollama 兼容 HTTP API）----
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-# 生成超时（秒）：本地模型首 token 可能慢，但 demo 也不该挂死
-OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", 30))
+# 生成超时（秒）：本机实测 granite4.2:3b 冷启动（2.2GB 载入 GPU）约 34s，
+# 因此默认放宽到 60s 并配合启动预热——预热后单次生成降到数秒
+OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", 60))
+# 预热超时（秒）：仅用于启动时把模型载入常驻，允许更久
+OLLAMA_WARMUP_TIMEOUT = float(os.getenv("OLLAMA_WARMUP_TIMEOUT", 180))
+# 模型常驻时长（Ollama keep_alive）：默认 10m，避免每次请求重新载入
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+# 单次生成最大 token 数：不设上限时思考型模型（如本机 granite4.2）会一直生成到超时
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", 256))
+# 是否允许模型"思考"（thinking 模式）：关闭后本机的 granite4.2 从 >60s 降到 ~1.7s
+OLLAMA_THINK = os.getenv("OLLAMA_THINK", "false").lower() == "true"
 
 # ---- v2/v3 预留 ----
 POSTGRES_DSN = os.getenv("POSTGRES_DSN", "")  # v2: 会话库 + v3: durable checkpointer

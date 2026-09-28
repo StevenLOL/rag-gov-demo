@@ -22,6 +22,15 @@ REFUSAL_COVERAGE = float(os.getenv("REFUSAL_COVERAGE", 0.5))
 # BM25 top1 绝对分数低于该值 → 拒答
 RETRIEVAL_MIN_SCORE = float(os.getenv("RETRIEVAL_MIN_SCORE", 2.0))
 
+# ---- 检索后端（v2）：bm25（默认，零依赖）| vector（FAISS）| hybrid（RRF 融合）----
+RETRIEVAL_BACKEND = os.getenv("RETRIEVAL_BACKEND", "bm25")
+
+# 嵌入模型（本地 sentence-transformers；国内下载建议 HF_ENDPOINT=https://hf-mirror.com）
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
+EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
+# 向量模式的拒答阈值（归一化后内积 = 余弦，范围 -1~1）
+VECTOR_MIN_SCORE = float(os.getenv("VECTOR_MIN_SCORE", 0.35))
+
 # ---- 本地 LLM（Ollama 兼容 HTTP API）----
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")

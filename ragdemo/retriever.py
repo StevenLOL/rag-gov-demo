@@ -111,6 +111,24 @@ class Bm25Backend:
         return hits / len(q_tokens)
 
 
-def build_index(chunks: list[Chunk]) -> Bm25Backend:
-    """工厂函数：当前默认 BM25；v2 在此切换/并列 FAISS 后端。"""
+def build_index(chunks: list[Chunk], backend: str | None = None) -> Backend:
+    """工厂函数：按配置选择检索后端，向量依赖缺失时自动回退 BM25。
+
+    backend: bm25（默认，零依赖）| vector（FAISS）| hybrid（BM25 ⊕ 向量，RRF 融合）
+    """
+    from .config import RETRIEVAL_BACKEND  # 延迟导入避免配置/检索循环依赖
+
+    backend = backend or RETRIEVAL_BACKEND
+    if backend in ("vector", "hybrid"):
+        try:
+            from .vector import build_hybrid_backend, build_vector_backend
+            return (
+                build_hybrid_backend(chunks)
+                if backend == "hybrid"
+                else build_vector_backend(chunks)
+            )
+        except Exception as exc:  # noqa: BLE001 —— 依赖/模型不可用时降级，不中断服务
+            import sys
+
+            print(f"[retriever] 向量后端不可用（{exc}），回退 BM25", file=sys.stderr)
     return Bm25Backend(chunks=chunks)

@@ -1,0 +1,21 @@
+# rag-gov-demo 开发快捷命令
+# 用法：make <target>   （Windows Git Bash 下可用）
+
+.PHONY: run test eval clean
+
+# 启动 API（开发模式，自动重载）
+run:
+	uvicorn api.main:app --reload --port 8000
+
+# 跑全部测试（含治理 schema 测试；v3 用例标记 skip）
+test:
+	python -m pytest tests/ -v
+
+# 跑检索质量评估（golden set，报 recall@5）
+eval:
+	python evaluation/run_eval.py
+
+# 清理运行时产物
+clean:
+	rm -f data/audit/*.jsonl
+	rm -rf .pytest_cache __pycache__ ragdemo/__pycache__

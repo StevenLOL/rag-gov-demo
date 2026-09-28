@@ -1,0 +1,41 @@
+# tools/scopes.yaml —— 每步最小权限的声明式白名单（越权测试的数据源）
+#
+# 格式致敬 opencode / claude code 的 permission config（allow/ask/deny + 模式匹配）——
+# 复用判定见 singapore/docs/068 §2：不发明新 DSL，移植到企业 RAG 场景并补审计/数据分级。
+#
+# 字段约定：
+#   scope: 权限范围列表，{资源}:{动作}；运行时按此校验工具调用
+#   risk:  low  → agent 可直接执行，事后审计
+#          high → 执行前必须经 LangGraph interrupt() 人工批准（v3）
+#   data_class: 数据分级上限（对齐 gov_ai_usage_rules.md 的四级分级）
+
+tools:
+  search_docs:
+    scope: [docs:read]
+    risk: low
+    data_class: internal
+    description: 在本地语料库中检索文档片段
+
+  devmap_lookup:
+    scope: [devmap:read]
+    risk: low
+    data_class: public
+    description: 通过 devmap MCP server 查询技术组件图谱
+
+  export_report:
+    scope: [docs:read, export:write]
+    risk: high
+    data_class: internal
+    description: 将问答结果导出为报告文件（外发类动作，需人工批准）
+
+  delete_record:
+    scope: [db:delete]
+    risk: high
+    data_class: sensitive
+    description: 删除审计或会话记录（破坏类动作，需人工批准+审计）
+
+  call_cloud_llm:
+    scope: [llm:external]
+    risk: high
+    data_class: public
+    description: 将内容发送至公有云 LLM API（对照实验专用；涉敏内容必须被拒绝）

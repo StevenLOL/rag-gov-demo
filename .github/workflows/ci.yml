@@ -1,0 +1,21 @@
+# CI：测试 + 评估冒烟（v2 加 docker build；v3 加治理三用例断言）
+name: ci
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run tests
+        run: python -m pytest tests/ -v
+      - name: Retrieval eval smoke (report only)
+        run: python evaluation/run_eval.py

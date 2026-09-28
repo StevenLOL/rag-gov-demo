@@ -1,0 +1,55 @@
+# rag-gov-demo
+
+> **治理优先（governance-first）的 agentic RAG 参考实现**——答案必带出处、答不出明说、
+> 高风险动作必须经人批准、每一步留审计、每份权限有声明。
+
+三层洋葱（每层独立可演示，独立 git tag）：
+
+| 层 | 一句话 | 状态 |
+|---|---|---|
+| v1 可信检索基座 | 引用溯源 + 拒答机制，一条命令起 | **本仓库当前状态（骨架已落地）** |
+| v2 交付成熟层 | Docker 三容器 + CI + Postgres + eval 数字 | 结构已铺好，实现中 |
+| v3 可控自治层 | LangGraph interrupt 审批 + 最小权限 + IMDA 治理产物 | 骨架占位（`agents/graph.py`） |
+
+## 为什么是这个定位
+
+市面上 RAG demo 证明"我会调 API"，Dify/RAGFlow 证明"世界已经有产品了"。
+本仓库证明的是第三件事：**我知道一个 agent 进企业前还差什么——并且把差的东西做出来了。**
+详细论证见singapore 工作区 `docs/067`（详规格）、`docs/068`（复用 vs 自建判定）、`docs/069`（白盒讲解）。
+
+## 快速开始（v1，零云依赖）
+
+```bash
+pip install -r requirements.txt
+uvicorn api.main:app --reload          # 或者 make run
+# 打开 http://localhost:8000/docs 试 POST /ask
+```
+
+无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
+
+## 组件与数据边界
+
+- 本地闭环：FastAPI + 本地 LLM(Ollama 类) + 本地 embedding/检索 + Postgres（v2/v3）+ 审计日志
+- 唯一远端必需：GitHub（托管 + Actions CI）
+- 远端 LLM API 仅作对照实验与演示兜底；**明确不用** Pinecone 云 / LangSmith
+- 完整组件表见 `docs/069` 同名文档（singapore 工作区）
+
+## 治理（v3 目标形态）
+
+- 每工具最小权限：`tools/scopes.yaml`（格式致敬 opencode/claude code permission config）
+- 高风险动作：LangGraph `interrupt()` 强制人工批准（approve/reject/edit/respond 四决策）
+- 越权测试进 CI：`tests/test_governance.py`
+- 治理文档：`docs/GOVERNANCE.md`（IMDA MGF-Agentic 格式 Agent Identity Card + L0–L4 自治声明）
+
+## 致谢与复用声明（防 NIH）
+
+- 挂起/恢复原语：**LangGraph**（`interrupt()` / `Command`）——我们不重造
+- 声明式权限模式：**致敬 opencode / claude code 的 permission config**——移植到企业 RAG 场景并补审计与数据分级
+- 工具协议：**MCP**（devmap v0.4.1 作为首个工具源）
+
+## Roadmap
+
+- [x] v1 骨架：语料/分块/BM25 检索/引用/拒答/审计 JSONL/CI
+- [ ] v1 收尾：golden set 扩到 20 题，Ollama 生成接通
+- [ ] v2：Dockerfile+compose 实测、Postgres 会话库、Streamlit UI、RAI.md
+- [ ] v3：LangGraph 化（interrupt/Command/thread_id）、MCP 接入、越权测试、IMDA 身份卡

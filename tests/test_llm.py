@@ -89,6 +89,9 @@ def test_generate_builds_prompt_with_citations(monkeypatch):
     assert "[1]" in captured["payload"]["prompt"]
     assert "高风险动作要批准吗" in captured["payload"]["prompt"]
     assert captured["payload"]["options"]["temperature"] == 0.2
+    # 防无限生成：硬性 token 上限 + 关闭思考模式（本机 granite4.2 实测 >60s → ~1.7s）
+    assert captured["payload"]["options"]["num_predict"] > 0
+    assert captured["payload"].get("think") is False
 
 
 def test_generate_raises_when_no_model(monkeypatch):

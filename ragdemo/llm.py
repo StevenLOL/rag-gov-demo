@@ -15,10 +15,19 @@ from __future__ import annotations
 import httpx
 
 from .chunker import Chunk
-from .config import OLLAMA_MODEL, OLLAMA_TIMEOUT, OLLAMA_URL
+from .config import (
+    OLLAMA_KEEP_ALIVE,
+    OLLAMA_MODEL,
+    OLLAMA_NUM_PREDICT,
+    OLLAMA_THINK,
+    OLLAMA_TIMEOUT,
+    OLLAMA_URL,
+    OLLAMA_WARMUP_TIMEOUT,
+)
 
+# 提示词细节：不要写"[n]"这种占位符字面量——模型会照抄（本机实测结尾出现多余 [n]）。
 _PROMPT_TEMPLATE = """你是资料问答助手。只依据给定资料回答，禁止编造。
-回答末尾用 [n] 标注所引用资料的编号。
+回答中引用资料时，用方括号加数字编号标注，例如 [1] 或 [2]。
 
 资料：
 {context}
@@ -74,6 +83,34 @@ def resolve_model(preferred: str | None = None) -> str | None:
     return models[0]
 
 
+def warmup(model: str | None = None) -> bool:
+    """启动时预热：把模型载入并常驻，避免首请求撞上冷启动超时。
+
+    本机实测：granite4.2:3b 冷启动（2.2GB 载入 GPU）约 34s，超过普通请求超时；
+    预热后单次生成降到数秒。预热失败不影响服务（上层已是抽取式降级）。
+    """
+    target = model or resolve_model()
+    if target is None:
+        return False
+    try:
+        response = httpx.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": target,
+                "prompt": "hi",
+                "stream": False,
+                "keep_alive": OLLAMA_KEEP_ALIVE,
+                "options": {"num_predict": 1},  # 只生成一个 token，纯加载
+            },
+            timeout=OLLAMA_WARMUP_TIMEOUT,
+        )
+        response.raise_for_status()
+        return True
+    except Exception as exc:  # noqa: BLE001 —— 预热失败只记日志，不阻断启动
+        print(f"[llm] 预热失败（将走抽取式降级）：{exc}")
+        return False
+
+
 def generate(question: str, chunks: list[Chunk], model: str | None = None) -> str:
     """调用本地 Ollama 生成带引用标注的答案；失败抛异常（上层降级）。"""
     target = model or resolve_model()
@@ -84,7 +121,13 @@ def generate(question: str, chunks: list[Chunk], model: str | None = None) -> st
         "model": target,
         "prompt": _PROMPT_TEMPLATE.format(context=_render_context(chunks), question=question),
         "stream": False,
-        "options": {"temperature": 0.2},  # 问答场景压低随机性
+        "keep_alive": OLLAMA_KEEP_ALIVE,   # 保持常驻，避免每请求重新载入
+        # think=false：关闭思考型模型的长链推理（本机 granite4.2 实测 >60s → ~1.7s）
+        "think": OLLAMA_THINK,
+        "options": {
+            "temperature": 0.2,           # 问答场景压低随机性
+            "num_predict": OLLAMA_NUM_PREDICT,  # 硬性上限，防止无限生成撞超时
+        },
     }
     response = httpx.post(
         f"{OLLAMA_URL}/api/generate", json=payload, timeout=OLLAMA_TIMEOUT

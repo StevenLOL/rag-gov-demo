@@ -44,6 +44,20 @@ def refresh_llm(force: bool = False) -> None:
 refresh_llm(force=True)  # 启动时探一次，/health 立刻能报状态
 
 
+@app.on_event("startup")
+def _startup_warmup() -> None:
+    """后台预热本地模型：避免首个问答请求撞上冷启动超时（实测冷启动 ~34s）。"""
+    if not _llm_state["available"]:
+        return
+
+    def _warm() -> None:
+        llm.warmup(_llm_state["model"])
+
+    import threading
+
+    threading.Thread(target=_warm, daemon=True).start()
+
+
 class AskRequest(BaseModel):
     """POST /ask 请求体。"""
 

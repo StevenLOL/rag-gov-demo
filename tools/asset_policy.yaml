@@ -1,0 +1,57 @@
+# tools/asset_policy.yaml —— 素材包的「授权 + 分类」策略（治理即代码第二条）
+#
+# 为什么单独一张表、而不是写死在脚本里：
+#   授权是策略，不是逻辑。素材包入库、授权到期、用途放宽，这些变更应当是
+#   「改配置 + 过评审」，而不是「改代码 + 重新发版」。配置即策略 → 可评审、可测试、
+#   可在 CI 里断言（见 tests/test_assets.py 的授权门禁用例）。
+#
+# 与 tools/scopes.yaml 的分工（两道闸互不替代）：
+#   scopes.yaml = 谁能调用什么工具     （权限 + 风险分级）
+#   本文件      = 这批素材能被拿去干什么（授权 + 用途白名单）
+#   有权限 ≠ 有授权：即使工具在白名单内，用途越界依然被拒。
+#
+# 数据来源（实证，非臆造）：
+#   tome-1.7.6-gfx 的授权条款引自该包根目录 COPYING-MEDIA，
+#   并由 C:/src/games/scripts/03_extract_tengine_gfx_samples.py 头部注释二次记录；
+#   分类关键词沿用同一脚本实证过的口径（该脚本已在 306MB / 21161 张 PNG 上跑通）。
+
+packages:
+  tome-1.7.6-gfx:
+    path: E:/games/t-engine4-windows-1.7.6/game/modules/tome-1.7.6-gfx.team
+    format: team-zip            # .team 实为标准 zip，PNG 全部位于 data/gfx/ 下
+    license: TE4-COPYING-MEDIA
+    allowed_use: [reference]    # 仅「调研/风格参考」
+    denied_use: [ship, commercial]
+    note: >
+      COPYING-MEDIA 原文："All the medias located in all the "/data/gfx" folders are
+      granted to use with the Tales of Maj'Eyal game only." —— 仅限 ToME 游戏内使用。
+      本项目仅可作风格参考与可用性调研；正式入库须先取得授权（contact darkgod@te4.org）。
+    evidence: C:/src/games/scripts/03_extract_tengine_gfx_samples.py
+
+  jinyong-selfmade:
+    path: C:/src/games/jinyong/assets
+    format: directory
+    license: own
+    allowed_use: [reference, ship]
+    denied_use: []
+    note: >
+      自制素材（jinyong 项目，105 commits 的产出；assets 下实测 3367 张图片），
+      无第三方授权约束，可作商业用途。
+    evidence: C:/src/games/jinyong/assets
+
+# 分类关键词：沿用 03 号脚本实证过的 13 类口径，迁移到 YAML 以免「策略藏在脚本里」。
+# 匹配方式为「路径小写包含关键词」——简单、可解释、可审计（不做语义模型，避免黑箱）。
+categories:
+  草原/草地: [grass, meadow, steppe, plain]
+  沙漠:      [sand, dune, arid]
+  雪域:      [snow, ice, frozen, glacial]
+  热带雨林:  [jungle, tropical, palm]
+  水域:      [water, sea, river, lake, shore]
+  树木:      [tree, willow, oak, pine, forest, wood]
+  山地:      [mountain, hill, rock, cliff, granite]
+  道路地面:  [road, floor, ground, path, cobble]
+  建筑:      [wall, hut, house, door, roof, pillar]
+  大地图:    [wm_, worldmap]
+  物件:      [/object/]
+  人物:      [/npc/, /player/]
+  UI界面:    [/ui/, dark-ui, metal-ui]

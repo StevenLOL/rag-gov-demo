@@ -15,6 +15,9 @@ data/audit/*.jsonl
 # 环境变量
 .env
 
+# v3b 素材导出演示产物（每次演示可重建，不入库）
+_out/
+
 # OS
 Thumbs.db
 .DS_Store

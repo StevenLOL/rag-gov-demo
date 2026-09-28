@@ -1,11 +1,19 @@
 # rag-gov-demo 开发快捷命令
 # 用法：make <target>   （Windows Git Bash 下可用）
 
-.PHONY: run test eval ui clean
+.PHONY: run test eval ui mcp mcp-demo clean
 
 # 启动 API（开发模式，自动重载）
 run:
 	uvicorn api.main:app --reload --port 8000
+
+# 启动 MCP server（stdio，供任意 MCP 客户端连接）
+mcp:
+	python mcp_server.py
+
+# 四段治理剧情脚本化演示（无需 MCP 客户端，面试演示用）
+mcp-demo:
+	python mcp_server.py --selftest
 
 # 启动演示 UI（需先 make run）
 ui:

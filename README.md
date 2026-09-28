@@ -85,11 +85,55 @@ RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变�
 - 越权测试进 CI：`tests/test_governance.py`
 - 治理文档：`docs/GOVERNANCE.md`（IMDA MGF-Agentic 格式 Agent Identity Card + L0–L4 自治声明）
 
+## v3b：受治理的 MCP server（零依赖手写）
+
+`mcp_server.py` 是一个**手写**的 MCP stdio 服务端（JSON-RPC 2.0，无任何 SDK 依赖），
+协议契约与 `C:/src/devinfo/devmap/src/mcp.ts`（269 行实证）一致：`initialize` /
+`tools/list` / `tools/call` / `notifications/*` 无响应 / `-32601`。只声明 `tools`
+能力——不吹 resources/prompts。
+
+**与普通 MCP server 的唯一区别：它返回的不是执行结果，而是治理裁决。**
+
+| 闸 | 数据源 | 触发条件 | 返回 |
+|---|---|---|---|
+| 权限闸 | `tools/scopes.yaml` | 工具不在白名单 | `blocked_unauthorized`（不给审批机会） |
+| 授权闸 | `tools/asset_policy.yaml` | 用途超出授权（如把仅供参考的素材用于 ship） | `blocked_by_policy`（同样不给审批机会） |
+| 风险闸 | `risk: high` | 高风险动作 | `awaiting_approval` + `thread_id` |
+
+两阶段提交（把 HITL 塞进无状态协议）：
+
+```jsonc
+// 阶段一
+{"name":"extract_game_assets","arguments":{"package":"tome-1.7.6-gfx","out_dir":"_out/ref","use":"reference"}}
+→ {"status":"awaiting_approval","thread_id":"8d517188","payload":{...}}
+// 阶段二
+{"name":"extract_game_assets","arguments":{...,"_approval":{"thread_id":"8d517188","type":"approve","operator":"demo"}}}
+→ {"status":"executed","output":{"written_count":26}}
+```
+
+**为什么授权闸要排在审批闸之前**：审批人并不比策略更懂 `COPYING-MEDIA` 写了什么，
+"批准了"不等于"合法"。授权拒绝必须发生在挂起之前——由
+`tests/test_assets.py::test_license_gate_blocks_denied_use` 与
+`tests/test_mcp_server.py::test_policy_gate_blocks_before_approval` 断言。
+
+### 真实素材实测（2026-09-29，`scripts/010` 取证，证据在 `_evidence/real_asset_scan.json`）
+
+- 素材包：`tome-1.7.6-gfx.team`，**292.2 MB / 21161 张 PNG**，只读扫描 **0.67s**
+- 授权：`TE4-COPYING-MEDIA` → 仅 `reference` 放行，`ship` / `commercial` 拒绝
+- 四段剧情：`use=ship` → blocked；`use=reference` → 挂起；批准 → 落盘 26 张；改判 reject → `_out/never` 不存在
+
+```bash
+python mcp_server.py --selftest     # 四段剧情脚本化演示
+python mcp_server.py                # stdio 模式，供任意 MCP 客户端连接
+```
+
 ## 致谢与复用声明（防 NIH）
 
 - 挂起/恢复原语：**LangGraph**（`interrupt()` / `Command`）——我们不重造
 - 声明式权限模式：**致敬 opencode / claude code 的 permission config**——移植到企业 RAG 场景并补审计与数据分级
-- 工具协议：**MCP**（devmap v0.4.1 作为首个工具源）
+- 工具协议：**MCP**（devmap v0.4.1 作为首个工具源；本仓库的 server 为同契约手写实现）
+- 素材抽取口径：**`C:/src/games/scripts/03`、`12` 号脚本**（分类关键词、分层抽样、保留 alpha）
+  ——复用的是「怎么抽图」，自建的是「抽图这个动作怎么被治理」
 
 ## Roadmap
 
@@ -98,7 +142,9 @@ RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变�
 - [x] v3a：LangGraph 治理编排最小可运行（interrupt 审批 / 越权拒绝 / 副作用恰执行一次，行为测试进 CI）
 - [x] v2 UI：Streamlit 演示界面（问答/引用/拒答/审计）
 - [x] v2 检索：FAISS 向量后端 + RRF 混合检索（依赖可选，缺失自动回退 BM25）
-- [ ] v1 收尾：Ollama 生成接通实测
+- [x] v1 收尾：Ollama 生成接通实测（模型自动发现/预热/思考型模型 `think=false`，>60s → 1.7s）
+- [x] v3b（部分）：受治理 MCP server（手写 JSON-RPC 2.0）+ 三道闸（权限/授权/风险）
+      + 游戏美术素材工具接入真实素材包（292MB / 21161 张实证）
 - [ ] v2：Dockerfile+compose 实测、Postgres 会话库、RAI.md 充实
-- [ ] v3b：Streamlit 审批卡（approve/reject/edit/respond）+ devmap MCP 工具接入
+- [ ] v3b（剩余）：Streamlit 审批卡（approve/reject/edit/respond）+ devmap 工具接入
 - [ ] v3c：PostgresSaver 替换 InMemorySaver + 审计表迁移

@@ -41,9 +41,11 @@ def test_rrf_fusion_by_rank():
     from ragdemo.vector import HybridBackend
 
     chunks = _chunks()
-    # 路径1：甲、乙、丙；路径2：乙、甲、丙（乙在两路都靠前 → 融合后应第一）
+    # 路径1：甲、乙、丙；路径2：乙、丙、甲
+    # → 乙 = 1/62 + 1/61 最高，甲 = 1/61 + 1/63 次之，丙 = 1/63 + 1/62 最低
+    # 注：若两路排名对称（如 甲1乙2 vs 乙1甲2），RRF 会出现并列——这是 RRF 的性质而非 bug
     backend = HybridBackend(
-        bm25=_FakeBackend(chunks), vector=_FakeBackend([chunks[1], chunks[0], chunks[2]])
+        bm25=_FakeBackend(chunks), vector=_FakeBackend([chunks[1], chunks[2], chunks[0]])
     )
     hits = backend.search("任意问题", top_k=3)
     assert [h.chunk.chunk_id for h in hits] == ["b#0", "a#0", "c#0"]

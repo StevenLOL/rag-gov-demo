@@ -44,9 +44,16 @@ class SentenceTransformerEmbedder:
     _model: object = field(default=None, init=False, repr=False)
 
     def _load(self) -> object:
+        """加载模型：优先用本地缓存（离线友好、秒开），缓存缺失时才联网下载。"""
         if self._model is None:
             from sentence_transformers import SentenceTransformer  # 本地依赖，延迟导入
-            self._model = SentenceTransformer(self.model_name, device=self.device)
+            try:
+                self._model = SentenceTransformer(
+                    self.model_name, device=self.device, local_files_only=True
+                )
+            except Exception:  # noqa: BLE001 —— 缓存缺失 → 走正常下载路径
+                # 国内网络建议先 export HF_ENDPOINT=https://hf-mirror.com
+                self._model = SentenceTransformer(self.model_name, device=self.device)
         return self._model
 
     @property

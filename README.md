@@ -23,7 +23,7 @@
 
 ```bash
 conda activate ragdemo
-python -m pytest -q          # 54 passed
+python -m pytest -q          # 59 passed
 uvicorn api.main:app --reload          # 或者 make run
 # 打开 http://localhost:8000/docs 试 POST /ask
 ```
@@ -59,7 +59,7 @@ MSYS_NO_PATHCONV=1 robocopy \
 > **`ragdemo` 自带的能力**（继承自 py312，无需再装任何东西）：
 > Python 3.12.13 / torch 2.7.1+cu128（**CUDA 可用**）/ transformers 5.17.0 /
 > sentence-transformers 6.1.0 / faiss-cpu 1.15.1 / langgraph / fastapi / pytest / Pillow。
-> 全量测试 **54 passed，0 skipped**（含向量检索用例）。
+> 全量测试 **59 passed，0 skipped**（含向量检索与语料档位用例；2026-09-30 更新）。
 
 无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
 
@@ -95,7 +95,7 @@ RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变�
 依赖缺失时自动回退 BM25 并打印提示。向量后端默认模型 `intfloat/multilingual-e5-small`（384 维，中英双语，~470MB）；
 国内建议先 `export HF_ENDPOINT=https://hf-mirror.com`。
 
-### 实测对比（20 题 golden set，语料 15 chunk）
+### 实测对比 A（治理语料：5 篇 / 15 chunk / 20 题）
 
 | 后端 | recall@5 | top1 |
 |---|---|---|
@@ -104,8 +104,81 @@ RETRIEVAL_BACKEND=hybrid uvicorn api.main:app    # 切后端只需改环境变�
 | hybrid（RRF） | 20/20 | 19/20 |
 
 诚实解读：语料仅 15 个片段，三后端都已饱和——这组数字证明的是**工程管道打通**（后端可切换、指标可复跑），
-**不是"混合检索更强"**。向量后端补上了 BM25 唯一漏掉的那道 top1；混合检索在小语料上被 BM25 的排名拉回。
-语料扩到千级片段后对比才有分辨力——这是后续扩充方向（不夸大当前结论）。
+**不是"混合检索更强"**。
+
+### 实测对比 B（真实逆向语料：37 篇 / 1052 chunk / 31 题，2026-09-30）
+
+上一节我写过"语料扩到千级片段后对比才有分辨力——这是后续扩充方向"。**这一步已经做完了**，
+语料换成 dosgames 的 37 篇真实逆向文档（1052 chunk），结果立刻有了分辨力：
+
+| 后端 | recall@5 | top1 |
+|---|---|---|
+| bm25 | 29/31（93.5%） | 23/31（74.2%） |
+| **hybrid（RRF）** | **31/31（100%）** | **26/31（83.9%）** |
+
+```bash
+make eval-legacy    # BM25 基线
+make eval-hybrid    # BM25 ⊕ 向量（RRF）
+```
+
+**两道 BM25 漏掉的是什么，以及为什么**（`scripts/014_检索失败根因诊断.py` 取证，不猜）：
+
+- 题面"DQ3 的 SHP 格式逆向探查结论"，top1 落在 `022_三国英雄` 的**「十二、参考文档」**片段——
+  实测该文档里 `dq3` / `shp` 出现次数**均为 0**；
+- 根因不是 bug，是**词法检索的固有缺陷**：BM25 的 tf 饱和 + 长度归一化下，
+  一个 df=1 的稀有锚点词**最多只能贡献约 4–7 分**，敌不过"格式/图形/结论"这类通用词的累加；
+- 再叠加 CJK 按字符切二元组，会产出 `查结`（"探查|结论"）、`形格`（"图形|格式"）这类
+  **跨词边界的伪词**，它们 IDF 最高（6.9+），反而主导排序。
+
+向量/混合后端正是补这个洞：语义相似不依赖字面共现。
+**这也是"检索层为什么定位成教学实现"的量化依据**——见下一节。
+
+## 检索层的定位：教学实现，不是产品级检索（重要）
+
+**结论先说**：本仓库的 BM25 / 向量 / 混合检索是**教学实现（teaching implementation）**，
+不是要拿去跟 RAGFlow、ElasticSearch 抢饭碗的东西。这么做是**故意的**，理由可量化。
+
+### 为什么自己写了一遍，以及为什么不继续投入
+
+| 项 | 数据 | 出处 |
+|---|---|---|
+| 本仓库检索相关代码 | 493 行（占全仓 1838 行的 27%） | `C:/src/RAG_LLM_agents/docs/014` |
+| 元景万悟开源的企业知识库 `rag_open_source` | **25,566 行 / 98 文件** | 同上，已 clone 实证 |
+| 比值 | **1.9%** | — |
+
+自己写一遍的价值是**把接口与失败模式摸清楚**（所以才有了上面"伪词 IDF 主导排序"这种一手发现）；
+但要把它做成产品级检索，等于用 1.9% 的投入去追 100% 的工程量——**不划算，也不是本仓库的主张**。
+
+### 选型结论（可直接用于 COTS 评估）
+
+> 生产环境选 RAGFlow / 成熟向量库做检索层；
+> **治理层（权限闸 / 授权闸 / 风险闸 / 审计）没有现成开源件可用，才是本仓库的自建重点。**
+
+依据：已实证元景万悟有**完整的企业级 IAM**（`iam-service`：全局角色 / 组织 / OAuth 应用 / 验证码），
+但**全仓 `interrupt` 唯一命中是 `know_doc_parsing_interrupted`（文档解析中断，与 agent 动作审批无关，伪命中）**——
+即：**传统治理（谁能登录、谁能看文档）是成熟的；agent 动作级治理（这个动作该不该让它执行）是空白的**。
+这是第 4 次在同构项目上观察到同一结论。
+
+## 语料档位（CORPUS_PROFILE）
+
+同一套代码挂不同知识库，靠环境变量切换，API / UI / MCP 全链路生效：
+
+| 档位 | 语料 | 规模 | 用途 |
+|---|---|---|---|
+| `gov`（默认） | `data/corpus` 治理教学语料 | 5 篇 / 15 chunk | 单元测试与 CI 依赖它，**不要改默认** |
+| `legacy` | `data/corpus_legacy` dosgames 真实逆向文档 | 37 篇 / 1052 chunk | 演示与压测 |
+
+```bash
+CORPUS_PROFILE=legacy uvicorn api.main:app     # 或 make run-legacy
+```
+
+为什么用档位而不是直接换默认目录：`tests/test_retriever.py`、`test_citation.py`
+断言的是治理语料的具体内容，默认目录一换这些用例全部失效。档位化让两套语料**并存且不互相破坏**
+（由 `tests/test_corpus_profile.py` 断言：两套语料 chunk 来源交集为空）。
+
+`legacy` 档位的 golden set 不是拍脑袋写的：先用 `scripts/012` 量化锚点歧义
+（结论：`RLE` 出现在 24/38 篇、`调色板` 29 篇——拿它们出题 recall@5 必然虚高），
+再用 `scripts/013` 逐篇挖 df=1 的区分性术语，最后每题都在 golden set 里留了 `anchor` 字段做证据。
 
 ## 组件与数据边界
 
@@ -181,6 +254,8 @@ python mcp_server.py                # stdio 模式，供任意 MCP 客户端连�
 - [x] v1 收尾：Ollama 生成接通实测（模型自动发现/预热/思考型模型 `think=false`，>60s → 1.7s）
 - [x] v3b（部分）：受治理 MCP server（手写 JSON-RPC 2.0）+ 三道闸（权限/授权/风险）
       + 游戏美术素材工具接入真实素材包（292MB / 21161 张实证）
+- [x] 语料换真实数据：dosgames 37 篇逆向文档（1052 chunk）+ 31 题 golden set，
+      BM25 29/31 → hybrid 31/31，根因取证见 `scripts/014`
 - [ ] v2：Dockerfile+compose 实测、Postgres 会话库、RAI.md 充实
 - [ ] v3b（剩余）：Streamlit 审批卡（approve/reject/edit/respond）+ devmap 工具接入
 - [ ] v3c：PostgresSaver 替换 InMemorySaver + 审计表迁移

@@ -1,7 +1,11 @@
 # rag-gov-demo
 
+[![CI](https://github.com/StevenLOL/rag-gov-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/StevenLOL/rag-gov-demo/actions/workflows/ci.yml)
+
 > **治理优先（governance-first）的 agentic RAG 参考实现**——答案必带出处、答不出明说、
 > 高风险动作必须经人批准、每一步留审计、每份权限有声明。
+>
+> 仓库：<https://github.com/StevenLOL/rag-gov-demo>（公开）
 
 三层洋葱（每层独立可演示，独立 git tag）：
 
@@ -183,7 +187,10 @@ CORPUS_PROFILE=legacy uvicorn api.main:app     # 或 make run-legacy
 ## 组件与数据边界
 
 - 本地闭环：FastAPI + 本地 LLM(Ollama 类) + 本地 embedding/检索 + Postgres（v2/v3）+ 审计日志
-- 唯一远端必需：GitHub（托管 + Actions CI）
+- 唯一远端必需：GitHub（托管 + Actions CI）——**2026-09-30 起这句话才真正成立**：
+  此前仓库只有本地 git、没有 remote，CI 从未触发过。现已推送并跑绿（含 eval smoke），
+  首次真跑还暴露了一个依赖缺失：`requirements.txt` 漏了 Pillow，
+  导致 15 个治理用例在 CI 上 ERROR（本机 conda 自带 Pillow 掩盖了它），已修。
 - 远端 LLM API 仅作对照实验与演示兜底；**明确不用** Pinecone 云 / LangSmith
 - 完整组件表见 `docs/069` 同名文档（singapore 工作区）
 

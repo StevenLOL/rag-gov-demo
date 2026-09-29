@@ -7,13 +7,20 @@ PyYAML>=6.0             # 解析 tools/scopes.yaml 权限白名单
 pytest>=8.0             # CI 测试（含治理行为测试）
 langgraph>=0.2          # v3 治理编排：interrupt()/Command()/checkpointer（官方原语，见 docs/068 复用判定）
 
+# ⚠️ Pillow 是「测试必需」，不是可选 —— 2026-09-30 CI 首次真跑时暴露（见下）
+Pillow>=10.0            # tests/helpers.py 用它生成合成 PNG 素材包；
+                        # 缺了它，test_assets.py(9) + test_mcp_server.py(6) 共 15 个治理用例
+                        # 在 CI 上直接 ERROR。产品侧 assets.py 是函数内延迟导入（导出时才 import），
+                        # 所以「扫描/分类/抽样不装也能跑」的设计仍然成立——但测试跑不了。
+
 # v2 向量检索（可选：不安装时自动回退 BM25，零依赖依然可跑）
 # faiss-cpu>=1.8         # 本地向量索引（IndexFlatIP，归一化后内积=余弦）
 # sentence-transformers>=3.0  # 本地嵌入（默认 intfloat/multilingual-e5-small，384维）
 #   国内下载模型前建议：export HF_ENDPOINT=https://hf-mirror.com
 
-# v3b 素材工具（可选：仅「导出素材」需要，扫描/分类/抽样是纯标准库，不装也能跑）
-# Pillow>=10.0           # 落盘 PNG：保留 alpha、缩略图缩放
+# v3b 素材工具：产品运行期真正可选的只有「导出素材」这一步——
+# assets.py:232 是函数内 `from PIL import Image`，不导出就不 import，保持零负担。
+# 但 CI 必须装（见上方必需区），否则治理用例跑不起来。
 
 # 后续依赖（暂不装）
 # mcp>=1.0               # 未使用：本仓库的 MCP server 是零依赖手写实现（见 mcp_server.py）

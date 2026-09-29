@@ -13,7 +13,19 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # ---- 数据路径（全部本地闭环）----
-CORPUS_DIR = Path(os.getenv("CORPUS_DIR", BASE_DIR / "data" / "corpus"))
+# 语料档位：同一套代码挂不同知识库，靠 CORPUS_PROFILE 切换（API / UI / MCP 全链路生效）。
+#   gov    —— 治理教学语料（data/corpus，5 篇 / 15 chunk）：单元测试与 CI 的默认档，勿动；
+#   legacy —— 真实 dosgames 逆向文档（data/corpus_legacy，37 篇 / 1052 chunk）：演示与压测档。
+# 为什么用档位而不是直接改默认目录：tests/ 里的检索/引用用例断言的是治理语料的内容，
+# 一旦默认目录改成 legacy，这些用例会全部失效——档位化可以让两套语料并存互不破坏。
+CORPUS_PROFILES: dict[str, Path] = {
+    "gov": BASE_DIR / "data" / "corpus",
+    "legacy": BASE_DIR / "data" / "corpus_legacy",
+}
+_DEFAULT_PROFILE = os.getenv("CORPUS_PROFILE", "gov")
+CORPUS_DIR = Path(
+    os.getenv("CORPUS_DIR", str(CORPUS_PROFILES.get(_DEFAULT_PROFILE, CORPUS_PROFILES["gov"])))
+)
 AUDIT_LOG = Path(os.getenv("AUDIT_LOG", BASE_DIR / "data" / "audit" / "audit.jsonl"))
 
 # ---- 拒答判定（双保险，见 citation.py 的说明）----

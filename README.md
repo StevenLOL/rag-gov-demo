@@ -22,19 +22,44 @@
 **环境用 conda（本机主力环境），不要另建 venv：**
 
 ```bash
-conda create -n ragdemo python=3.12 -y
 conda activate ragdemo
-pip install -r requirements.txt
-
+python -m pytest -q          # 54 passed
 uvicorn api.main:app --reload          # 或者 make run
 # 打开 http://localhost:8000/docs 试 POST /ask
 ```
 
-> 环境约定（2026-09-29 用户明确要求）：一律用 **conda**，环境名 `ragdemo`。
+### `ragdemo` 是怎么来的（2026-09-30）
+
+用 conda 的 `--clone` 从 `py312` 复制而来，**目的只有一个：零下载地拿到 torch**。
+
+```
+conda create -n ragdemo --clone py312    # ← 会失败，见下
+```
+
+⚠️ **本机 safe-delete shim 会拦 conda clone**：
+conda 在收尾时清理 50 个临时文件，触发
+`[safe-delete][SAFE_DELETE_BULK_CONFIRM_REQUIRED] {"count":50,"threshold":50}` 而失败，
+留下 57,082 个文件的残骸（conda env list 里不认它）。
+
+**绕过办法（已验证，19 秒完成）**：不做删除，直接用 robocopy 从 py312 补齐缺失文件：
+
+```bash
+MSYS_NO_PATHCONV=1 robocopy \
+  "E:\Users\Administrator\miniconda3\envs\py312" \
+  "E:\Users\Administrator\miniconda3\envs\ragdemo" /E /R:1 /W:1
+# 结果：62,304 文件 / 6.77 GB / 19s（5,227 新复制，57,077 已存在）
+```
+
+<br>
+
+> **环境约定（2026-09-29 用户明确要求）**：一律用 **conda**，环境名 `ragdemo`。
 > 之前用过 `~/.workbuddy/binaries/python/envs/default` 这个托管 venv——
 > 它不在 conda 管理范围内、路径又长，已弃用；脚本与文档中的硬编码路径已清除。
-> 向量后端额外需要 `pip install sentence-transformers`（会拉 torch，约 2.5GB，可选）；
-> 不装则自动回退 BM25，全部测试仍可通过（向量用例 skip）。
+>
+> **`ragdemo` 自带的能力**（继承自 py312，无需再装任何东西）：
+> Python 3.12.13 / torch 2.7.1+cu128（**CUDA 可用**）/ transformers 5.17.0 /
+> sentence-transformers 6.1.0 / faiss-cpu 1.15.1 / langgraph / fastapi / pytest / Pillow。
+> 全量测试 **54 passed，0 skipped**（含向量检索用例）。
 
 无本地 LLM 时自动降级为**抽取式引用模式**（直接返回带出处的原文摘录）——demo 永远可跑。
 

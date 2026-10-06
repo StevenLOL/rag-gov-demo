@@ -1,9 +1,12 @@
-"""BM25 检索器（v1，零依赖纯 Python 实现）。
+"""BM25 retriever (v1, zero-dependency pure-Python implementation).
 
-为什么手写 BM25 而不是上向量检索：
-- v1 的目标是把"引用+拒答"的骨架跑通，BM25 够用且零模型下载；
-- 接口按可替换设计（Backend 协议），v2 引入本地 embedding + FAISS 时不动上层；
-- 双语分词：拉丁词按词切，CJK 按字 + 二元组（bigram）切——治理语料中英混排也能命中。
+Why hand-written BM25 instead of vector retrieval:
+- v1's goal is to get the "citation + refusal" skeleton working end to end; BM25 is good enough
+  and requires no model downloads;
+- The interface is designed to be swappable (Backend protocol), so v2's local embedding + FAISS
+  requires no changes upstream;
+- Bilingual tokenization: Latin text is split on words, CJK is split into single characters plus
+  bigrams -- so the mixed Chinese/English governance corpus still matches.
 """
 
 from __future__ import annotations
@@ -20,7 +23,7 @@ _CJK_RUN_RE = re.compile(r"[\u4e00-\u9fff]+")
 
 
 def tokenize(text: str) -> list[str]:
-    """双语分词：拉丁小写词 + CJK 单字与二元组。"""
+    """Bilingual tokenization: lowercased Latin words + CJK single characters and bigrams."""
     tokens = [t.lower() for t in _LATIN_RE.findall(text)]
     for run in _CJK_RUN_RE.findall(text):
         chars = list(run)
@@ -31,33 +34,34 @@ def tokenize(text: str) -> list[str]:
 
 @dataclass
 class Hit:
-    """一条检索命中。"""
+    """A single retrieval hit."""
 
     chunk: Chunk
     score: float
 
 
 class Backend(Protocol):
-    """检索后端协议（v2 将提供 FaissBackend 实现）。"""
+    """Retrieval backend protocol (v2 will provide a FaissBackend implementation)."""
 
     def search(self, query: str, top_k: int = 5) -> list[Hit]: ...
 
 
 @dataclass
 class Bm25Backend:
-    """Okapi BM25（k1=1.5, b=0.75），内存索引，启动时构建。"""
+    """Okapi BM25 (k1=1.5, b=0.75) with an in-memory index built at startup."""
 
     chunks: list[Chunk]
     k1: float = 1.5
     b: float = 0.75
-    # 以下字段在 __post_init__ 中构建
+    # Fields below are built in __post_init__
     doc_tokens: list[list[str]] = field(default_factory=list, init=False)
     doc_lens: list[int] = field(default_factory=list, init=False)
     df: dict[str, int] = field(default_factory=dict, init=False)
 
     def __post_init__(self) -> None:
         for chunk in self.chunks:
-            # 标题参与分词：标题是治理语料里最强的主题信号
+            # Titles participate in tokenization: the title is the strongest topic signal in
+            # the governance corpus
             tokens = tokenize(chunk.title + " " + chunk.text)
             self.doc_tokens.append(tokens)
             self.doc_lens.append(len(tokens))
@@ -68,14 +72,14 @@ class Bm25Backend:
         self.avgdl = sum(self.doc_lens) / self.n_docs if self.n_docs else 0.0
 
     def _idf(self, term: str) -> float:
-        """BM25 IDF（含 doc frequency = 0 的保护）。"""
+        """BM25 IDF (with protection for document frequency = 0)."""
         df = self.df.get(term, 0)
         if df == 0:
             return 0.0
         return math.log((self.n_docs - df + 0.5) / df + 1.0)
 
     def search(self, query: str, top_k: int = 5) -> list[Hit]:
-        """返回按 BM25 分数降序的 top_k 命中。"""
+        """Return the top_k hits sorted by BM25 score in descending order."""
         q_tokens = tokenize(query)
         scores = [0.0] * self.n_docs
         for i, tokens in enumerate(self.doc_tokens):
@@ -100,9 +104,10 @@ class Bm25Backend:
         return [Hit(chunk=self.chunks[i], score=s) for s, i in ranked[:top_k] if s > 0]
 
     def coverage(self, query: str) -> float:
-        """查询词元（去重）在语料词典中的覆盖率——拒答判定的第一道闸。
+        """Coverage of the deduplicated query tokens in the corpus vocabulary -- the first
+        gate of the refusal decision.
 
-        返回值 0~1：1 表示查询里每个词元语料里都出现过。
+        Returns a value in 0-1: 1 means every query token appeared somewhere in the corpus.
         """
         q_tokens = set(tokenize(query))
         if not q_tokens:
@@ -112,11 +117,12 @@ class Bm25Backend:
 
 
 def build_index(chunks: list[Chunk], backend: str | None = None) -> Backend:
-    """工厂函数：按配置选择检索后端，向量依赖缺失时自动回退 BM25。
+    """Factory: picks the retrieval backend according to configuration, automatically falling
+    back to BM25 when vector dependencies are missing.
 
-    backend: bm25（默认，零依赖）| vector（FAISS）| hybrid（BM25 ⊕ 向量，RRF 融合）
+    backend: bm25 (default, zero deps) | vector (FAISS) | hybrid (BM25 ⊕ vector, RRF fusion)
     """
-    from .config import RETRIEVAL_BACKEND  # 延迟导入避免配置/检索循环依赖
+    from .config import RETRIEVAL_BACKEND  # lazy import avoids a config/retriever circular dep
 
     backend = backend or RETRIEVAL_BACKEND
     if backend in ("vector", "hybrid"):
@@ -127,8 +133,8 @@ def build_index(chunks: list[Chunk], backend: str | None = None) -> Backend:
                 if backend == "hybrid"
                 else build_vector_backend(chunks)
             )
-        except Exception as exc:  # noqa: BLE001 —— 依赖/模型不可用时降级，不中断服务
+        except Exception as exc:  # noqa: BLE001 -- degrade when deps/model unavailable, keep serving
             import sys
 
-            print(f"[retriever] 向量后端不可用（{exc}），回退 BM25", file=sys.stderr)
+            print(f"[retriever] vector backend unavailable ({exc}); falling back to BM25", file=sys.stderr)
     return Bm25Backend(chunks=chunks)

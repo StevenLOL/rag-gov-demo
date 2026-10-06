@@ -1,27 +1,27 @@
-# v1 依赖（最小集，全部可离线审计的开源包）
-fastapi>=0.110          # 后端骨架：问答/审批/审计 API
-uvicorn>=0.29           # ASGI 服务器
-httpx>=0.27             # 调用本地 Ollama HTTP API（以及未来远端对照实验）
-pydantic>=2.6           # 请求/响应模型
-PyYAML>=6.0             # 解析 tools/scopes.yaml 权限白名单
-pytest>=8.0             # CI 测试（含治理行为测试）
-langgraph>=0.2          # v3 治理编排：interrupt()/Command()/checkpointer（官方原语，见 docs/068 复用判定）
+# v1 dependencies (minimal set, all open-source packages that can be audited offline)
+fastapi>=0.110          # Backend skeleton: Q&A / approval / audit API
+uvicorn>=0.29           # ASGI server
+httpx>=0.27             # Calls the local Ollama HTTP API (and future remote comparison experiments)
+pydantic>=2.6           # Request/response models
+PyYAML>=6.0             # Parses the tools/scopes.yaml permission whitelist
+pytest>=8.0             # CI tests (including governance behavior tests)
+langgraph>=0.2          # v3 governance orchestration: interrupt()/Command()/checkpointer (official primitives, see docs/068 reuse decision)
 
-# ⚠️ Pillow 是「测试必需」，不是可选 —— 2026-09-30 CI 首次真跑时暴露（见下）
-Pillow>=10.0            # tests/helpers.py 用它生成合成 PNG 素材包；
-                        # 缺了它，test_assets.py(9) + test_mcp_server.py(6) 共 15 个治理用例
-                        # 在 CI 上直接 ERROR。产品侧 assets.py 是函数内延迟导入（导出时才 import），
-                        # 所以「扫描/分类/抽样不装也能跑」的设计仍然成立——但测试跑不了。
+# ⚠️ Pillow is "required for tests", not optional — exposed during the first real CI run on 2026-09-30 (see below)
+Pillow>=10.0            # tests/helpers.py uses it to generate synthetic PNG asset packs;
+                        # without it, 15 governance cases in test_assets.py(9) + test_mcp_server.py(6)
+                        # ERROR outright on CI. On the product side, assets.py uses a lazy in-function import (imported only on export),
+                        # so the "scan/classify/sample work without it installed" design still holds — but tests can't run.
 
-# v2 向量检索（可选：不安装时自动回退 BM25，零依赖依然可跑）
-# faiss-cpu>=1.8         # 本地向量索引（IndexFlatIP，归一化后内积=余弦）
-# sentence-transformers>=3.0  # 本地嵌入（默认 intfloat/multilingual-e5-small，384维）
-#   国内下载模型前建议：export HF_ENDPOINT=https://hf-mirror.com
+# v2 vector retrieval (optional: falls back to BM25 automatically when not installed; still runs with zero dependencies)
+# faiss-cpu>=1.8         # Local vector index (IndexFlatIP; after normalization, inner product = cosine)
+# sentence-transformers>=3.0  # Local embeddings (default intfloat/multilingual-e5-small, 384 dims)
+#   Before downloading models in China, it is recommended to: export HF_ENDPOINT=https://hf-mirror.com
 
-# v3b 素材工具：产品运行期真正可选的只有「导出素材」这一步——
-# assets.py:232 是函数内 `from PIL import Image`，不导出就不 import，保持零负担。
-# 但 CI 必须装（见上方必需区），否则治理用例跑不起来。
+# v3b asset tools: the only truly optional step at product runtime is "export assets" —
+# assets.py:232 does `from PIL import Image` inside the function; without exporting, it is never imported, keeping zero overhead.
+# But CI must install it (see the required section above), otherwise the governance cases cannot run.
 
-# 后续依赖（暂不装）
-# mcp>=1.0               # 未使用：本仓库的 MCP server 是零依赖手写实现（见 mcp_server.py）
-# streamlit>=1.40        # v2：演示 UI（本地已验证，CI 不跑 UI）
+# Later dependencies (not installed for now)
+# mcp>=1.0               # Unused: the MCP server in this repo is a hand-written zero-dependency implementation (see mcp_server.py)
+# streamlit>=1.40        # v2: demo UI (verified locally; CI does not run the UI)

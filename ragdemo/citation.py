@@ -1,11 +1,12 @@
-"""引用与拒答（v1 核心："诚实"的产品化）。
+"""Citation and refusal (v1 core: productizing "honesty").
 
-判定流程（双保险，阈值见 config.py）：
-1. 覆盖率闸：查询词元在语料词典的覆盖率 < REFUSAL_COVERAGE → 拒答；
-2. 分数闸：BM25 top1 分数 < RETRIEVAL_MIN_SCORE → 拒答；
-3. 双闸都过 → 生成/摘录答案并附引用列表。
+Decision flow (two-gate safety net; thresholds in config.py):
+1. Coverage gate: if the query tokens' coverage in the corpus vocabulary < REFUSAL_COVERAGE → refuse;
+2. Score gate: if the BM25 top-1 score < RETRIEVAL_MIN_SCORE → refuse;
+3. Both gates passed → generate/extract the answer and attach the citation list.
 
-拒答不是报错，是一等公民的响应类型：返回 refused=True + 解释话术。
+A refusal is not an error but a first-class response type: returns refused=True plus an
+explanatory message.
 """
 
 from __future__ import annotations
@@ -18,24 +19,24 @@ from .retriever import Bm25Backend, Hit
 
 @dataclass
 class Citation:
-    """一条引用：能在语料文件里定位到原文。"""
+    """One citation: locates the original text within a corpus file."""
 
-    ref: int          # 序号，与答案文本中的 [n] 对应
-    source: str       # 来源文件名
-    title: str        # chunk 标题
-    snippet: str      # 短摘录
+    ref: int          # Reference number, matching the [n] markers in the answer text
+    source: str       # Source file name
+    title: str        # Chunk title
+    snippet: str      # Short excerpt
 
 
 @dataclass
 class Answer:
-    """/ask 端点的统一响应模型（v3 将扩展 approval 字段）。"""
+    """Unified response model for the /ask endpoint (v3 will add the approval field)."""
 
     question: str
     refused: bool
     refusal_reason: str = ""
     answer: str = ""
     citations: list[Citation] = field(default_factory=list)
-    mode: str = "extractive"   # extractive | llm（v2 由 llm.py 决定）
+    mode: str = "extractive"   # extractive | llm (decided by llm.py in v2)
 
 
 def _build_citations(hits: list[Hit]) -> list[Citation]:
@@ -46,10 +47,11 @@ def _build_citations(hits: list[Hit]) -> list[Citation]:
 
 
 def _extractive_answer(hits: list[Hit]) -> str:
-    """无 LLM 时的抽取式答案：直接给 top 命中原文 + 引用标记（永远可跑）。"""
-    parts = ["根据资料："]
+    """Extractive answer without an LLM: returns the top hits' source text + citation markers
+    (always works)."""
+    parts = ["According to the corpus:"]
     for i, hit in enumerate(hits[:2], start=1):
-        parts.append(f"[{i}] 「{hit.chunk.title}」：{hit.chunk.text.strip()[:300]}")
+        parts.append(f"[{i}] \"{hit.chunk.title}\": {hit.chunk.text.strip()[:300]}")
     return "\n\n".join(parts)
 
 
@@ -60,47 +62,50 @@ def answer_question(
     refusal_coverage: float = 0.5,
     min_score: float = 2.0,
 ) -> Answer:
-    """问答主入口。
+    """Main Q&A entry point.
 
-    generate: 可选的 (question, context_chunks) -> str 生成函数（llm.py 提供）。
-              为 None 或调用失败时走抽取式降级——demo 不因缺模型而不可用。
+    generate: optional (question, context_chunks) -> str generation function (provided by
+              llm.py). When None or when the call fails, falls back to the extractive path
+              -- the demo never becomes unavailable just because a model is missing.
     """
     hits = index.search(question, top_k=3)
 
-    # 闸 1：覆盖率
+    # Gate 1: coverage
     coverage = index.coverage(question)
     if not hits or coverage < refusal_coverage:
         return Answer(
             question=question,
             refused=True,
             refusal_reason=(
-                f"查询词元在语料中的覆盖率 {coverage:.0%} 低于阈值 "
-                f"{refusal_coverage:.0%}，资料中无依据，拒绝编造。"
+                f"Query token coverage in the corpus is {coverage:.0%}, below the "
+                f"{refusal_coverage:.0%} threshold; no grounding in the corpus, "
+                "refusing to fabricate."
             ),
         )
 
-    # 闸 2：BM25 分数
+    # Gate 2: BM25 score
     top_score = hits[0].score
     if top_score < min_score:
         return Answer(
             question=question,
             refused=True,
             refusal_reason=(
-                f"最相关片段得分 {top_score:.1f} 低于阈值 {min_score:.1f}，"
-                "资料中无足够依据，拒绝编造。"
+                f"Top passage score {top_score:.1f} is below the {min_score:.1f} "
+                "threshold; insufficient grounding in the corpus, refusing to fabricate."
             ),
         )
 
-    # 通过双闸 → 生成或摘录
+    # Both gates passed → generate or extract
     mode = "extractive"
     answer_text = ""
     if generate is not None:
         try:
             answer_text = generate(question, [h.chunk for h in hits])
             mode = "llm"
-        except Exception as exc:  # noqa: BLE001 —— 降级是设计行为，不是吞错
+        except Exception as exc:  # noqa: BLE001 -- degradation is designed behavior, not error swallowing
             answer_text = ""
-            # 降级原因记入审计便于排查，这里先留注释锚点（v2 接 Postgres 后落库）
+            # Record the degradation reason in the audit log for troubleshooting; comment anchor
+            # kept here (persist to the database in v2 once Postgres is wired in)
             _ = exc
     if not answer_text:
         answer_text = _extractive_answer(hits)

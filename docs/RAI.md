@@ -1,33 +1,39 @@
-# RAI.md —— Responsible AI 节（v2 完成时充实）
+# RAI.md — Responsible AI notes
 
-## 声明
+## What is actually implemented (not decoration)
 
-本 demo 的 RAI 实践不是装饰，是可运行代码：
+1. **Honest boundaries** — the system refuses to answer when it can't
+   (dual gate: token-coverage check + minimum retrieval score), instead of
+   fabricating. See `ragdemo/citation.py`.
+2. **Data stays local** — the primary path runs local inference with zero
+   public-cloud dependencies; verifiable from `docker-compose.yml`.
+3. **Traceability** — every Q&A (including refusals) lands in an audit JSONL
+   file. See `ragdemo/audit.py`.
+4. **Least privilege** — declarative per-tool scopes with risk levels and
+   data classes. See `tools/scopes.yaml`.
+5. **Testable governance** — governance behavior is asserted in CI.
+   See `tests/test_governance.py`.
 
-1. **诚实边界**：答不出就拒答（覆盖率 + 分数双闸），拒绝编造——见 `ragdemo/citation.py`。
-2. **数据不出域**：主路径本地推理，零公有云依赖——`docker-compose.yml` 可验证。
-3. **留痕**：每次问答（含拒答）落审计 JSONL——`ragdemo/audit.py`。
-4. **最小权限**：每工具声明式 scope + 风险分级——`tools/scopes.yaml`。
-5. **可测**：治理行为进 CI——`tests/test_governance.py`。
+## Known limitations (honest list)
 
-## 与既有资产的映射（v2 充实）
-
-- J511 / CISP 认证知识 → 本文件的措辞与控制项选择
-- SQLCipher / edge_v 密码研究 → "静态数据加密"节的素材来源
-- ISO 21434 参与经历 → 生命周期安全思维的对应描述
-
-## 已知局限（诚实清单）
-
-- v1 未接 LLM 时为抽取式答案，无生成流畅性可言；
-- 检索对比结论受语料规模限制：当前 5 份语料 15 个片段，BM25/向量/混合三后端在 20 题上 recall@5 均为 20/20
-  （top1 分别 19/20、20/20、19/20），即已饱和——不能据此声称某后端更优（见 README 实测对比）；
-- 审计为单机 JSONL，v3 迁移 Postgres 并加签名防篡改（TODO）；
-- **素材分类用的是关键词子串匹配，不是语义理解**，存在可复现的误命中：
-  真实包实测中「树木」类命中 1437 张，其中 `cloak_inv.png` 是因为关键词 `oak` 被
-  `cloak` 包含（子串误命中）；「人物」类 13146 张是因为 `/player/` 匹配到
-  `shockbolt/player/**` 的成百上千个装备层件，而非真正的 NPC 立绘。
-  这与 `scripts/008` 的结论一致：**关键词命中只是线索，不等于语义**。
-  本 demo 因此把分类定位为"供人工评审的抽样线索"（产出 contact sheet 给人看），
-  而不是"自动入库的判定依据"——人工评审环节不可省略；
-- 授权闸只校验「用途是否在白名单」，不校验素材内容本身是否侵权
-  （例如包内某张图是否真的来自 ToME）：后者超出本 demo 的取证能力。
+- Without a connected LLM, answers are extractive (quoted passages with
+  citations); there is no generative fluency.
+- Retrieval comparisons are corpus-bound: at 15 chunks all three backends
+  saturate (recall@5 20/20; top1 19/20, 20/20, 19/20), so no backend
+  superiority can be claimed from the default corpus alone. A larger-corpus
+  experiment with a root-caused failure mode is described in the README.
+- Audit is a single-machine JSONL file; hardening (signature, Postgres
+  migration) is tracked as future work.
+- **Asset classification uses keyword substring matching, not semantic
+  understanding**, and has reproducible false positives observed on a real
+  package: a "trees" category matched `cloak_inv.png` because the keyword
+  `oak` is a substring of `cloak`; a "characters" category matched thousands
+  of equipment layer images under `shockbolt/player/**` rather than actual
+  NPC portraits. Keyword hits are **leads, not semantics**. The demo
+  therefore positions classification as *sampling leads for human review*
+  (it produces contact sheets for a person to inspect), never as an
+  automatic ingest decision — the human review step is not optional.
+- The authorization gate checks whether the *declared use* is within the
+  license allow-list; it does not verify whether any individual file in a
+  package actually originates from the licensed source. That is beyond this
+  demo's forensic scope.

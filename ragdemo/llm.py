@@ -1,13 +1,21 @@
-"""本地 LLM 生成客户端（v1）。
+"""Local LLM generation client (v1).
 
-主路径：Ollama 兼容 HTTP API（数据不出域）。
+Main path: Ollama-compatible HTTP API (data never leaves the domain).
 
-v1 收尾新增的两个能力（由本机实测驱动：本机有 granite4.2:3b，而默认配置的 qwen2.5:7b 并不存在）：
-1. **模型自动发现**：查询 /api/tags 拿到本机已有模型；配置的模型不存在时自动回退到
-   同系列或第一个可用模型，避免"配了模型名但本机没有 → 每次请求都等到超时才降级"；
-2. **可用性探测**：is_available() 供 API 启动时决定走生成模式还是抽取式降级。
+Two capabilities added at v1 wrap-up (driven by on-device testing: this
+machine has granite4.2:3b, while the default-configured qwen2.5:7b does not
+exist):
+1. **Model auto-discovery**: query /api/tags to get locally available models;
+   when the configured model is missing, automatically fall back to the same
+   family or the first available model, avoiding "configured model name not
+   present on this machine -> every request waits until timeout before
+   degrading";
+2. **Availability probing**: is_available() lets the API decide at startup
+   between generation mode and extractive fallback.
 
-失败语义：本模块不吞错——连接失败/超时抛异常，由 citation.py 降级为抽取式引用模式。
+Failure semantics: this module never swallows errors — connection
+failures/timeouts raise exceptions, and citation.py degrades to extractive
+citation mode.
 """
 
 from __future__ import annotations
@@ -25,46 +33,55 @@ from .config import (
     OLLAMA_WARMUP_TIMEOUT,
 )
 
-# 提示词细节：不要写"[n]"这种占位符字面量——模型会照抄（本机实测结尾出现多余 [n]）。
-_PROMPT_TEMPLATE = """你是资料问答助手。只依据给定资料回答，禁止编造。
-回答中引用资料时，用方括号加数字编号标注，例如 [1] 或 [2]。
+# Prompt detail: do not write placeholder literals like "[n]" — the model will
+# copy them verbatim (verified on-device: spurious [n] showed up at the end).
+# The prompt is written in English; the corpus passages it embeds are Chinese
+# and the model answers over them, citing by number.
+_PROMPT_TEMPLATE = """You are a corpus-grounded QA assistant. Answer strictly from the
+given corpus passages; never fabricate. When citing a passage, mark it with a
+bracketed number, e.g. [1] or [2].
 
-资料：
+Corpus:
 {context}
 
-问题：{question}
+Question: {question}
 
-回答："""
+Answer:"""
 
-# 探测用短超时：生成可以慢，但探测必须快（否则拖慢每个请求）
+# Short probe timeout: generation may be slow, but probing must be fast
+# (otherwise it slows down every request)
 _PROBE_TIMEOUT = 3.0
 
 
 def _render_context(chunks: list[Chunk]) -> str:
-    """把命中 chunk 渲染成带编号的资料块（编号与引用列表一致）。"""
+    """Render hit chunks into numbered context blocks (numbering matches the
+    citation list)."""
     blocks = []
     for i, chunk in enumerate(chunks, start=1):
-        blocks.append(f"[{i}] 来源 {chunk.source} 「{chunk.title}」：\n{chunk.text}")
+        blocks.append(f"[{i}] Source {chunk.source} | {chunk.title}:\n{chunk.text}")
     return "\n\n".join(blocks)
 
 
 def list_models() -> list[str]:
-    """列出本机 Ollama 已有模型（/api/tags）。"""
+    """List models already present on the local Ollama instance (/api/tags)."""
     response = httpx.get(f"{OLLAMA_URL}/api/tags", timeout=_PROBE_TIMEOUT)
     response.raise_for_status()
     return [m["name"] for m in response.json().get("models", [])]
 
 
 def is_available() -> bool:
-    """Ollama 是否可达且有模型（供 API 启动时决定是否启用生成模式）。"""
+    """Whether Ollama is reachable and has models (lets the API decide at startup
+    whether to enable generation mode)."""
     try:
         return bool(list_models())
-    except Exception:  # noqa: BLE001 —— 探测失败即不可用（上层降级，不中断服务）
+    except Exception:  # noqa: BLE001 -- probe failure means unavailable (upper layer
+        # degrades; service is not interrupted)
         return False
 
 
 def resolve_model(preferred: str | None = None) -> str | None:
-    """解析实际使用的模型：配置名优先 → 同系列 → 第一个可用；都没有返回 None。"""
+    """Resolve the model actually used: configured name first -> same family -> first
+    available; None when none exist."""
     try:
         models = list_models()
     except Exception:  # noqa: BLE001
@@ -75,7 +92,8 @@ def resolve_model(preferred: str | None = None) -> str | None:
     preferred = preferred or OLLAMA_MODEL
     if preferred in models:
         return preferred
-    # 同系列回退：配了 qwen2.5:7b 但本机只有 qwen2.5:3b 时也能直接用
+    # Same-family fallback: if qwen2.5:7b is configured but only qwen2.5:3b exists
+    # locally, it can still be used directly
     base = preferred.split(":")[0]
     for name in models:
         if name.split(":")[0] == base:
@@ -84,10 +102,13 @@ def resolve_model(preferred: str | None = None) -> str | None:
 
 
 def warmup(model: str | None = None) -> bool:
-    """启动时预热：把模型载入并常驻，避免首请求撞上冷启动超时。
+    """Warm up at startup: load the model and keep it resident, avoiding the first
+    request hitting a cold-start timeout.
 
-    本机实测：granite4.2:3b 冷启动（2.2GB 载入 GPU）约 34s，超过普通请求超时；
-    预热后单次生成降到数秒。预热失败不影响服务（上层已是抽取式降级）。
+    Measured on this machine: granite4.2:3b cold start (loading 2.2GB onto GPU)
+    takes ~34s, exceeding the normal request timeout; after warm-up, a single
+    generation drops to a few seconds. Warm-up failure does not affect service
+    (the upper layer is already the extractive fallback).
     """
     target = model or resolve_model()
     if target is None:
@@ -100,33 +121,37 @@ def warmup(model: str | None = None) -> bool:
                 "prompt": "hi",
                 "stream": False,
                 "keep_alive": OLLAMA_KEEP_ALIVE,
-                "options": {"num_predict": 1},  # 只生成一个 token，纯加载
+                "options": {"num_predict": 1},  # generate one token only; purely loading
             },
             timeout=OLLAMA_WARMUP_TIMEOUT,
         )
         response.raise_for_status()
         return True
-    except Exception as exc:  # noqa: BLE001 —— 预热失败只记日志，不阻断启动
-        print(f"[llm] 预热失败（将走抽取式降级）：{exc}")
+    except Exception as exc:  # noqa: BLE001 -- warm-up failure is only logged; startup
+        # is not blocked
+        print(f"[llm] warmup failed (will degrade to extractive mode): {exc}")
         return False
 
 
 def generate(question: str, chunks: list[Chunk], model: str | None = None) -> str:
-    """调用本地 Ollama 生成带引用标注的答案；失败抛异常（上层降级）。"""
+    """Call local Ollama to generate an answer with citation markers; raises on
+    failure (upper layer degrades)."""
     target = model or resolve_model()
     if target is None:
-        raise RuntimeError("Ollama 不可用或本机没有可用模型")
+        raise RuntimeError("Ollama unavailable or no usable model found locally")
 
     payload = {
         "model": target,
         "prompt": _PROMPT_TEMPLATE.format(context=_render_context(chunks), question=question),
         "stream": False,
-        "keep_alive": OLLAMA_KEEP_ALIVE,   # 保持常驻，避免每请求重新载入
-        # think=false：关闭思考型模型的长链推理（本机 granite4.2 实测 >60s → ~1.7s）
+        "keep_alive": OLLAMA_KEEP_ALIVE,   # keep resident; avoid reloading per request
+        # think=false: disable the long chain-of-thought of thinking models
+        # (measured on local granite4.2: >60s -> ~1.7s)
         "think": OLLAMA_THINK,
         "options": {
-            "temperature": 0.2,           # 问答场景压低随机性
-            "num_predict": OLLAMA_NUM_PREDICT,  # 硬性上限，防止无限生成撞超时
+            "temperature": 0.2,           # low randomness for Q&A scenarios
+            "num_predict": OLLAMA_NUM_PREDICT,  # hard cap; prevents unbounded generation
+            # hitting the timeout
         },
     }
     response = httpx.post(

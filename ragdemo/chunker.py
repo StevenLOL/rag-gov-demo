@@ -1,11 +1,11 @@
-"""Markdown 语料分块器（v1）。
+"""Markdown corpus chunker (v1).
 
-策略：按 Markdown 标题（# / ## / ###）切块，标题行作为 chunk 的 title 元数据——
-引用溯源的最小单位就是 chunk（来源文件 + 标题 + 原文）。
+Strategy: split on Markdown headings (# / ## / ###); the heading line becomes the chunk's title
+metadata -- the smallest unit of citation traceability is the chunk (source file + title + text).
 
-不做的事（诚实边界）：
-- 不做语义切块（v2 视效果引入）；
-- 不在此层做向量化（retriever 负责索引）。
+What we deliberately do not do (honest boundaries):
+- No semantic chunking (may be introduced in v2 depending on results);
+- No vectorization at this layer (the retriever owns indexing).
 """
 
 from __future__ import annotations
@@ -17,16 +17,16 @@ from pathlib import Path
 
 @dataclass
 class Chunk:
-    """最小检索单元：一段带出处的原文。"""
+    """The minimal retrieval unit: a piece of source text with provenance."""
 
-    chunk_id: str      # 全局唯一：{source}#{序号}
-    source: str        # 来源文件名（引用展示用）
-    title: str         # 所在标题（引用展示用）
-    text: str          # 原文正文
+    chunk_id: str      # Globally unique: {source}#{index}
+    source: str        # Source file name (for citation display)
+    title: str         # Containing heading (for citation display)
+    text: str          # Original body text
 
     @property
     def snippet(self) -> str:
-        """引用卡片用的短摘录（120 字符）。"""
+        """Short excerpt for citation cards (120 characters)."""
         text = re.sub(r"\s+", " ", self.text).strip()
         return text[:120] + ("…" if len(text) > 120 else "")
 
@@ -35,12 +35,12 @@ _HEADING_RE = re.compile(r"^(#{1,4})\s+(.*)$")
 
 
 def chunk_markdown(text: str, source: str) -> list[Chunk]:
-    """把一份 Markdown 文本按标题切分为 Chunk 列表。
+    """Split a Markdown document into a list of Chunks by heading.
 
-    规则：
-    - 每个标题开启一个新 chunk，title = 标题文字；
-    - 文件开头无标题的散文本归入 title="(intro)"；
-    - 纯空白 chunk 丢弃。
+    Rules:
+    - Each heading starts a new chunk, with title = the heading text;
+    - Untitled loose text at the beginning of the file goes into a chunk with title="(intro)";
+    - Whitespace-only chunks are discarded.
     """
     chunks: list[Chunk] = []
     current_title = "(intro)"
@@ -71,7 +71,7 @@ def chunk_markdown(text: str, source: str) -> list[Chunk]:
 
 
 def load_corpus(corpus_dir: Path) -> list[Chunk]:
-    """加载目录下全部 .md 语料并分块（按文件名排序保证确定性）。"""
+    """Load and chunk all .md corpus files in a directory (sorted by file name for determinism)."""
     chunks: list[Chunk] = []
     for path in sorted(corpus_dir.glob("*.md")):
         chunks.extend(chunk_markdown(path.read_text(encoding="utf-8"), path.name))

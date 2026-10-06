@@ -1,16 +1,22 @@
-"""工具真实实现注册表 —— 治理图 execute 节点的分派表。
+"""Registry of real tool implementations — dispatch table for the governance
+graph's execute node.
 
-【为什么用注册表而不是 if/else 链】
-治理图（agents/graph.py）只关心「该不该做」，
-本模块只关心「怎么做」。两者解耦后：
-  - 新增工具 = 注册一个函数，不动治理逻辑（开闭原则）；
-  - 未注册的工具（如 export_report / delete_record）走受控模拟，
-    保证 tests/test_governance.py 的既有断言不被真实副作用污染。
+[Why a registry instead of an if/else chain]
+The governance graph (agents/graph.py) only cares about "whether it should be
+done"; this module only cares about "how it is done". Once decoupled:
+  - Adding a tool = registering a function, without touching governance logic
+    (open-closed principle);
+  - Unregistered tools (e.g. export_report / delete_record) fall back to
+    controlled simulation, keeping the existing assertions in
+    tests/test_governance.py free from real side effects.
 
-【注册的工具】
-  search_docs          low  真实：BM25/向量检索本地语料，带出处
-  scan_asset_package   low  真实：只读扫描素材包（不落盘）
-  extract_game_assets  high 真实：批量导出素材到磁盘（唯一写副作用）
+[Registered tools]
+  search_docs          low  real: BM25/vector retrieval over the local corpus,
+                            with provenance
+  scan_asset_package   low  real: read-only scan of an asset package (no disk
+                            writes)
+  extract_game_assets  high real: bulk asset export to disk (the only write
+                            side effect)
 """
 
 from __future__ import annotations
@@ -29,7 +35,7 @@ _REGISTRY: dict[str, Impl] = {}
 
 
 def register(name: str) -> Callable[[Impl], Impl]:
-    """注册工具实现（装饰器用法见下方各函数）。"""
+    """Register a tool implementation (decorator usage shown in the functions below)."""
 
     def _wrap(fn: Impl) -> Impl:
         _REGISTRY[name] = fn
@@ -39,7 +45,8 @@ def register(name: str) -> Callable[[Impl], Impl]:
 
 
 def dispatch(tool: str, params: dict[str, Any]) -> dict[str, Any]:
-    """执行工具；未注册则回退到「受控模拟」（不产生任何真实副作用）。"""
+    """Execute a tool; falls back to "controlled simulation" when unregistered
+    (produces no real side effects)."""
     fn = _REGISTRY.get(tool)
     if fn is None:
         return {"simulated": True, "tool": tool, "params": params}
@@ -50,17 +57,18 @@ def has_impl(tool: str) -> bool:
     return tool in _REGISTRY
 
 
-# ---------------------------------------------------------------- 检索
+# ---------------------------------------------------------------- retrieval
 
 @lru_cache(maxsize=1)
 def _index():
-    """语料索引（进程内单例；MCP server 启动只构建一次）。"""
+    """Corpus index (in-process singleton; built once when the MCP server starts)."""
     return build_index(load_corpus(CORPUS_DIR), RETRIEVAL_BACKEND)
 
 
 @register("search_docs")
 def impl_search_docs(params: dict[str, Any]) -> dict[str, Any]:
-    """检索本地治理语料，返回带出处的片段（引用是 RAG 可信度的底线）。"""
+    """Retrieve from the local governance corpus, returning snippets with provenance
+    (citations are the bottom line of RAG trustworthiness)."""
     query = params.get("query") or params.get("q") or ""
     top_k = int(params.get("top_k", 3))
     hits = _index().search(query, top_k=top_k)
@@ -80,11 +88,12 @@ def impl_search_docs(params: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------- 素材
+# ---------------------------------------------------------------- assets
 
 @register("scan_asset_package")
 def impl_scan_asset_package(params: dict[str, Any]) -> dict[str, Any]:
-    """只读扫描：统计 + 分类分布 + 抽样路径。不写盘，因此是低风险能力。"""
+    """Read-only scan: totals + category distribution + sampled paths. No disk writes,
+    hence a low-risk capability."""
     result = assets.scan_package(
         params["package"], per_category=int(params.get("per_category", 5))
     )
@@ -93,10 +102,11 @@ def impl_scan_asset_package(params: dict[str, Any]) -> dict[str, Any]:
 
 @register("extract_game_assets")
 def impl_extract_game_assets(params: dict[str, Any]) -> dict[str, Any]:
-    """批量导出素材（高风险：真实写盘）。
+    """Bulk asset export (high risk: real disk writes).
 
-    注意：本函数不做任何策略判断——授权校验由 ragdemo/policy.py 在
-    execute 节点之前完成。执行层保持"傻"，策略层才能被单独测试。
+    Note: this function performs no policy checks — authorization validation is
+    done by ragdemo/policy.py before the execute node. Keeping the execution
+    layer "dumb" is what makes the policy layer independently testable.
     """
     return assets.extract_assets(
         package_id=params["package"],

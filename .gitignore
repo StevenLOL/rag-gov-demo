@@ -5,17 +5,23 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# 运行时产物（审计日志保留目录结构，忽略内容）
+# Runtime artifacts (keep the audit directory structure, ignore contents)
 data/audit/*.jsonl
 
-# 本地向量索引缓存（如启用 FAISS 后端）
+# Local vector index cache (FAISS backend)
 *.faiss
 *.npy
 
-# 环境变量
+# Large experimental corpus: 37 legacy-system reverse-engineering notes,
+# produced by a separate project. Kept locally, excluded from the repo.
+# Re-run the scale experiment by pointing CORPUS_DIR at any local corpus.
+data/corpus_legacy/
+evaluation/golden_set_legacy.json
+
+# Environment variables
 .env
 
-# v3b 素材导出演示产物（每次演示可重建，不入库）
+# v3b asset-export demo output (rebuildable on every demo run)
 _out/
 
 # OS

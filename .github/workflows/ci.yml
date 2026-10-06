@@ -1,4 +1,4 @@
-# CI：测试 + 评估冒烟（v2 加 docker build；v3 加治理三用例断言）
+# CI: tests + evaluation smoke (v2 adds docker build; v3 adds governance three-case assertions)
 name: ci
 on:
   push:

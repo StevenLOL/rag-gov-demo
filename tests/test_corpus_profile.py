@@ -1,13 +1,19 @@
-"""语料档位（CORPUS_PROFILE）测试。
+"""Tests for the corpus profile (CORPUS_PROFILE).
 
-断言的四件事：
-1. 档位表完整，且默认档是 gov —— 保证 tests/ 里其它检索/引用用例不被真实语料"劫持"；
-2. legacy 档位真的能加载到量级正确的语料（37 篇 / 1052 chunk，不是空目录）；
-3. 真实语料上的区分性术语检索可用（用 012/013 两个脚本挖出来的 df=1 锚点词验证）；
-4. 两套语料的 chunk 完全不重叠 —— 证明档位切换是真的换了知识库，而不是混在一起。
+Four things are asserted:
+1. The profile table is complete and the default profile is gov — so other
+   retrieval/citation cases in tests/ are not "hijacked" by the real corpus;
+2. The legacy profile really loads a corpus of the correct scale (37 docs / 1,052
+   chunks, not an empty directory);
+3. Distinctive-term retrieval works on the real corpus (verified with the df=1 anchor
+   terms mined by scripts 012/013);
+4. Chunks from the two corpora never overlap — proving that profile switching truly
+   swaps the knowledge base rather than mixing them together.
 
-为什么不测 hybrid 后端：向量后端需要 sentence-transformers 与本地模型，
-CI 上不可得；hybrid 的对照实验结果记在 README 与 docs/015，不走单测。
+Why the hybrid backend is not tested: the vector backend requires
+sentence-transformers and a local model, which are unavailable on CI; the hybrid
+comparison results are recorded in the README and docs/015, and are not covered by
+unit tests.
 """
 
 from __future__ import annotations
@@ -22,33 +28,36 @@ from ragdemo.retriever import Bm25Backend
 
 
 def test_profiles_defined_and_gov_is_default():
-    """gov 与 legacy 两个档位都在；未设环境变量时默认 gov。"""
+    """Both the gov and legacy profiles exist; gov is the default when the env var is unset."""
     assert set(CORPUS_PROFILES) >= {"gov", "legacy"}
-    # 默认档必须是治理语料：tests/test_retriever.py、test_citation.py 断言的是它的内容
+    # The default profile must be the governance corpus: tests/test_retriever.py and
+    # test_citation.py assert on its content
     assert CORPUS_PROFILES["gov"].name == "corpus"
     assert CORPUS_PROFILES["legacy"].name == "corpus_legacy"
 
 
 def test_legacy_corpus_has_expected_scale():
-    """真实语料规模：37 篇 → 上千 chunk（数字来自 2026-09-30 实测）。"""
+    """Real corpus scale: 37 docs -> thousands of chunks (numbers measured on 2026-09-30)."""
     legacy_dir = CORPUS_PROFILES["legacy"]
     if not legacy_dir.is_dir():
-        pytest.skip(f"真实语料目录不存在：{legacy_dir}")
+        pytest.skip(f"local legacy corpus directory not found: {legacy_dir}")
     files = sorted(legacy_dir.glob("*.md"))
-    assert len(files) == 37, f"期望 37 篇逆向文档，实际 {len(files)}"
+    assert len(files) == 37, f"expected 37 documents, got {len(files)}"
     chunks = load_corpus(legacy_dir)
-    assert len(chunks) >= 1000, f"期望 >=1000 chunk，实际 {len(chunks)}"
+    assert len(chunks) >= 1000, f"expected >=1000 chunks, got {len(chunks)}"
 
 
 def test_distinctive_anchor_retrieves_its_document():
-    """df=1 锚点词能把对应文档捞到 top1（锚点由 scripts/013 挖掘得出）。
+    """A df=1 anchor term retrieves its document at top1 (anchors mined by scripts/013).
 
-    选 PKLite（全语料仅 017 一篇）与 xentax（仅 026 一篇）这两个最硬的锚点：
-    它们不受"同一游戏有两篇文档"的干扰，是检索器能力的下界验证。
+    PKLite (only doc 017 in the whole corpus) and xentax (only doc 026) are chosen as
+    the two hardest anchors: they are unaffected by the "same game having two
+    documents" interference, making them a lower-bound verification of retriever
+    capability.
     """
     legacy_dir = CORPUS_PROFILES["legacy"]
     if not legacy_dir.is_dir():
-        pytest.skip(f"真实语料目录不存在：{legacy_dir}")
+        pytest.skip(f"local legacy corpus directory not found: {legacy_dir}")
     backend = Bm25Backend(chunks=load_corpus(legacy_dir))
 
     hits = backend.search("ETIN 的 16 位 DOS EXE 被 PKLite 压缩过，怎么解压", top_k=1)
@@ -56,22 +65,25 @@ def test_distinctive_anchor_retrieves_its_document():
 
 
 def test_two_corpora_do_not_overlap():
-    """两套语料的 chunk 来源互不相交 —— 档位切换是替换，不是合并。"""
+    """Chunk sources of the two corpora are disjoint — profile switching is replacement, not merging."""
     legacy_dir = CORPUS_PROFILES["legacy"]
     if not legacy_dir.is_dir():
-        pytest.skip(f"真实语料目录不存在：{legacy_dir}")
+        pytest.skip(f"local legacy corpus directory not found: {legacy_dir}")
     gov_sources = {c.source for c in load_corpus(CORPUS_PROFILES["gov"])}
     legacy_sources = {c.source for c in load_corpus(legacy_dir)}
     assert gov_sources & legacy_sources == set()
-    assert legacy_sources  # 真实语料非空
+    assert legacy_sources  # the real corpus is non-empty
 
 
 def test_profile_env_switches_directory():
-    """CORPUS_PROFILE=legacy 时配置里的语料目录随之改变（全链路档位化的前提）。
+    """With CORPUS_PROFILE=legacy the configured corpus directory changes accordingly
+    (the precondition for end-to-end profile switching).
 
-    用子进程而不是 importlib.reload：reload 会替换 config 模块里的对象身份，
-    而其它模块早已 `from ragdemo.config import CORPUS_DIR` 把旧值绑定走了，
-    造成"reload 之后行为不一致"的隐式污染。子进程能真正验证"进程启动时读环境变量"这一语义。
+    A subprocess is used instead of importlib.reload: reload replaces object
+    identities inside the config module, while other modules have already bound the
+    old value away via `from ragdemo.config import CORPUS_DIR`, causing implicit
+    pollution where "behavior is inconsistent after reload". A subprocess genuinely
+    verifies the semantics of "the env var is read at process startup".
     """
     import subprocess
     import sys

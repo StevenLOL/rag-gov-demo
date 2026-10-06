@@ -1,9 +1,10 @@
-"""ragdemo —— 治理优先的 agentic RAG 参考实现（v1 包）。
+"""ragdemo — a governance-first agentic RAG reference implementation (v1 package).
 
-分层对应关系（详见仓库 README 与 singapore/docs/067）：
-- v1: chunker / retriever / citation / llm / audit（本包主体）
-- v2: 容器化、Postgres 会话库、eval 扩充（结构已预留）
-- v3: agents/graph.py（LangGraph 治理编排，独立占位，不进 v1 依赖）
+Layer mapping (see the repo README and singapore/docs/067 for details):
+- v1: chunker / retriever / citation / llm / audit (the core of this package)
+- v2: containerization, Postgres session store, expanded eval (structure reserved)
+- v3: agents/graph.py (LangGraph governance orchestration, standalone placeholder,
+  not part of v1 dependencies)
 """
 
 __version__ = "0.1.0"

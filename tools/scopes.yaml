@@ -1,62 +1,59 @@
-# tools/scopes.yaml —— 每步最小权限的声明式白名单（越权测试的数据源）
+# tools/scopes.yaml — declarative least-privilege whitelist per tool
+# (data source for the privilege-escalation tests)
 #
-# 格式致敬 opencode / claude code 的 permission config（allow/ask/deny + 模式匹配）——
-# 复用判定见 singapore/docs/068 §2：不发明新 DSL，移植到企业 RAG 场景并补审计/数据分级。
+# The format follows the permission-config style of opencode / claude code
+# (allow/ask/deny + pattern matching), ported to the enterprise RAG scenario
+# with audit and data classification added.
 #
-# 字段约定：
-#   scope: 权限范围列表，{资源}:{动作}；运行时按此校验工具调用
-#   risk:  low  → agent 可直接执行，事后审计
-#          high → 执行前必须经 LangGraph interrupt() 人工批准（v3）
-#   data_class: 数据分级上限（对齐 gov_ai_usage_rules.md 的四级分级）
+# Field conventions:
+#   scope: list of permission scopes, {resource}:{action}; validated on every tool call
+#   risk:  low  -> the agent may execute directly; audited afterwards
+#          high -> must be approved by a human via LangGraph interrupt() before execution
+#   data_class: upper bound of data classification (aligned with the four-level
+#          classification in data/corpus/gov_ai_usage_rules.md)
 
 tools:
   search_docs:
     scope: [docs:read]
     risk: low
     data_class: internal
-    description: 在本地语料库中检索文档片段
-
-  devmap_lookup:
-    scope: [devmap:read]
-    risk: low
-    data_class: public
-    description: 通过 devmap MCP server 查询技术组件图谱
+    description: Search the local corpus for sourced passages
 
   export_report:
     scope: [docs:read, export:write]
     risk: high
     data_class: internal
-    description: 将问答结果导出为报告文件（外发类动作，需人工批准）
+    description: Export Q&A results to a report file (outbound action, requires human approval)
 
   delete_record:
     scope: [db:delete]
     risk: high
     data_class: sensitive
-    description: 删除审计或会话记录（破坏类动作，需人工批准+审计）
+    description: Delete audit or session records (destructive action, requires approval + audit)
 
   call_cloud_llm:
     scope: [llm:external]
     risk: high
     data_class: public
-    description: 将内容发送至公有云 LLM API（对照实验专用；涉敏内容必须被拒绝）
+    description: Send content to a public-cloud LLM API (controlled experiments only; sensitive content must be refused)
 
-  # ---- v3b 新增：游戏美术素材（把「抽图」这个动作纳入治理）----
-  # 权限闸（本文件）+ 授权闸（asset_policy.yaml）+ 风险闸（risk）三道，
-  # 说明见 ragdemo/policy.py 头部。
+  # ---- v3b additions: game art assets (bringing the "extract images" action under governance) ----
+  # Three gates: permission gate (this file) + authorization gate (asset_policy.yaml) + risk gate (risk),
+  # see the header of ragdemo/policy.py for details.
   list_asset_packages:
     scope: [asset:read]
     risk: low
     data_class: internal
-    description: 列出已登记素材包及其授权用途（只读元数据，供 agent 决定下一步）
+    description: List registered asset packages and their licensed uses (read-only metadata)
 
   scan_asset_package:
     scope: [asset:read]
     risk: low
     data_class: internal
-    description: 只读扫描游戏美术素材包（总数/分类分布/抽样路径），不写任何文件
+    description: Read-only scan of a game-asset package (totals / category distribution / sampled paths); writes nothing
 
   extract_game_assets:
     scope: [asset:read, export:write]
     risk: high
     data_class: internal
-    description: 批量导出素材到磁盘（真实写副作用：须先过授权闸，再经人工批准）
+    description: "Bulk-export assets to disk (real write side effects: must pass the authorization gate, then human approval)"

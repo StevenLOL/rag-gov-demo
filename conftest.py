@@ -1,6 +1,7 @@
-# conftest.py 放在仓库根目录的作用：
-# pytest 以 prepend 导入模式加载本文件时，会把本目录加入 sys.path，
-# 从而使 tests/ 内可以直接 import ragdemo 包（tests/ 自身无 __init__.py）。
+# Purpose of placing conftest.py at the repository root:
+# when pytest loads this file in prepend import mode, it adds this directory to
+# sys.path, so tests/ can import the ragdemo package directly (tests/ itself
+# has no __init__.py).
 import os
 import sys
 

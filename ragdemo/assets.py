@@ -1,20 +1,29 @@
-"""游戏美术素材包引擎：扫描 / 分类 / 分层抽样 / 导出（副作用唯一地）。
+"""Game art asset pack engine: scan / classify / stratified sampling / export
+(the sole place with side effects).
 
-【复用与自建的边界——对齐 singapore/docs/068 的 L1-L7 判定】
-复用（L1-L2，不重复造轮子）：
-  - 分类关键词口径、分层抽样、保留 alpha 的做法，直接移植自实证脚本
-    C:/src/games/scripts/03_extract_tengine_gfx_samples.py（167 行）与
-    C:/src/games/scripts/12_extract_tome_chars_equips.py（77 行）；
-    这两个脚本已在真实素材上跑通：tome-1.7.6-gfx.team 是 306MB / 21161 张 PNG。
-自建（L4-L7，本项目的差异化）：
-  - 授权策略层（asset_policy.yaml）：「能不能拿去用」从脚本注释升级为可执行门禁；
-  - 风险分级与人工审批（scopes.yaml + LangGraph interrupt）：批量导出属高风险动作；
-  - 审计留痕：导出谁、导出多少、谁批准的，全部进 JSONL。
-换句话说：抽图本身不值钱（Photoshop/remove.bg 都能做），
-值钱的是「抽图这个动作被治理」——这正是 DSO/Micron JD 的 G1/G3/G4 维度。
+[Reuse vs. build-from-scratch boundary — aligned with the L1-L7 criteria in
+singapore/docs/068]
+Reuse (L1-L2, don't reinvent the wheel):
+  - The classification keyword scheme, stratified sampling, and the
+    alpha-preserving approach are ported directly from the empirical scripts
+    C:/src/games/scripts/03_extract_tengine_gfx_samples.py (167 lines) and
+    C:/src/games/scripts/12_extract_tome_chars_equips.py (77 lines);
+    both scripts have been run against real assets: tome-1.7.6-gfx.team is
+    306 MB / 21161 PNG images.
+Build from scratch (L4-L7, what differentiates this project):
+  - License policy layer (asset_policy.yaml): "may we use this?" is upgraded
+    from script comments into an executable gate;
+  - Risk grading with human approval (scopes.yaml + LangGraph interrupt):
+    bulk export is a high-risk action;
+  - Audit trail: what was exported, how much, and who approved it — all of it
+    goes into JSONL.
+In other words: extracting images itself is not valuable (Photoshop/remove.bg
+can do it); what is valuable is that "the extraction action is governed" —
+exactly the G1/G3/G4 dimensions of the DSO/Micron JD.
 
-【依赖】Pillow 为可选依赖：仅导出缩略图 / 合成 contact sheet 时需要；
-         纯扫描分类（只读 zip 目录）不需要 Pillow。
+[Dependencies] Pillow is optional: only needed for exporting thumbnails /
+         compositing contact sheets; a pure scan/classify pass (read-only zip
+         listing) does not require Pillow.
 """
 
 from __future__ import annotations
@@ -35,15 +44,16 @@ POLICY_PATH = Path(BASE_DIR) / "tools" / "asset_policy.yaml"
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif")
 
-# 未配置策略文件时的兜底分类（保证模块可独立使用；正式运行走 YAML）
-_FALLBACK_CATEGORIES: dict[str, list[str]] = {"未分类": [""]}
+# Fallback classification used when no policy file is configured (keeps the
+# module usable standalone; the real run goes through YAML)
+_FALLBACK_CATEGORIES: dict[str, list[str]] = {"uncategorized": [""]}
 
 
-# ---------------------------------------------------------------- 策略加载
+# ---------------------------------------------------------------- Policy loading
 
 @dataclass(frozen=True)
 class PackagePolicy:
-    """单个素材包的授权声明。"""
+    """License declaration for a single asset pack."""
 
     package_id: str
     path: str
@@ -54,36 +64,39 @@ class PackagePolicy:
     note: str = ""
 
     def check_use(self, use: str) -> tuple[bool, str]:
-        """校验用途是否被授权。返回 (是否放行, 理由)。
+        """Check whether a use is authorized. Returns (allowed, reason).
 
-        判定顺序：显式禁止优先 → 再看是否在允许列表内。
-        即「白名单之外即拒绝」，而不是「黑名单之外即放行」。
+        Decision order: explicit denial takes precedence → then check whether
+        the use is in the allowed list. That is, "deny anything outside the
+        whitelist", rather than "allow anything outside the blacklist".
         """
         if use in self.denied_use:
-            return False, f"用途 {use!r} 被显式禁止（license={self.license}）"
+            return False, f"use {use!r} is explicitly denied (license={self.license})"
         if use not in self.allowed_use:
             return False, (
-                f"用途 {use!r} 不在授权范围内（license={self.license}，"
-                f"允许 {list(self.allowed_use)}）"
+                f"use {use!r} is not within the licensed scope (license={self.license}, "
+                f"allowed: {list(self.allowed_use)})"
             )
-        return True, f"用途 {use!r} 已授权（license={self.license}）"
+        return True, f"use {use!r} is authorized (license={self.license})"
 
 
 @lru_cache(maxsize=1)
 def load_policy() -> dict[str, Any]:
-    """加载 asset_policy.yaml（lru_cache：一次进程只读一次盘）。"""
+    """Load asset_policy.yaml (lru_cache: read from disk only once per process)."""
     if not POLICY_PATH.exists():
         return {"packages": {}, "categories": _FALLBACK_CATEGORIES}
     return yaml.safe_load(POLICY_PATH.read_text(encoding="utf-8")) or {}
 
 
 def load_categories() -> dict[str, list[str]]:
-    """分类关键词表（策略外置，改分类不用改代码）。"""
+    """Classification keyword table (kept external in policy; changing
+    categories requires no code changes)."""
     return load_policy().get("categories") or _FALLBACK_CATEGORIES
 
 
 def get_package(package_id: str) -> PackagePolicy | None:
-    """按 id 取素材包策略；未登记的包一律视为「未授权」（默认拒绝）。"""
+    """Fetch a pack's policy by id; any unregistered pack is treated as
+    "unauthorized" (deny by default)."""
     raw = load_policy().get("packages", {}).get(package_id)
     if raw is None:
         return None
@@ -99,7 +112,8 @@ def get_package(package_id: str) -> PackagePolicy | None:
 
 
 def list_packages() -> list[dict[str, Any]]:
-    """列出全部已登记素材包（供 MCP tools 与 /tools 端点暴露能力）。"""
+    """List all registered asset packs (exposed to MCP tools and the /tools
+    endpoint)."""
     out = []
     for pid, raw in load_policy().get("packages", {}).items():
         out.append(
@@ -116,15 +130,17 @@ def list_packages() -> list[dict[str, Any]]:
 
 
 def _source_exists(path: str) -> bool:
-    """素材源是否存在（本机演示用：真实素材包 306MB 已在 E:/games）。"""
+    """Whether the asset source exists (local demo: the real 306 MB pack
+    lives at E:/games)."""
     return bool(path) and os.path.exists(path)
 
 
-# ---------------------------------------------------------------- 扫描（只读）
+# ---------------------------------------------------------------- Scanning (read-only)
 
 @dataclass
 class ScanResult:
-    """扫描结果：只描述「包里有什么」，不产生任何写操作。"""
+    """Scan result: describes only "what the pack contains"; performs no
+    write operations whatsoever."""
 
     package_id: str
     total_images: int
@@ -155,7 +171,8 @@ def _list_images_dir(root: Path) -> list[str]:
 
 
 def classify(names: list[str], categories: dict[str, list[str]]) -> dict[str, list[str]]:
-    """按关键词把图片路径归类。一个文件可同时命中多类（美术素材本就有多重语义）。"""
+    """Classify image paths by keywords. A file may hit multiple categories
+    at once (art assets are inherently multi-semantic)."""
     out: dict[str, list[str]] = {}
     for label, kws in categories.items():
         hits = [n for n in names if any(k in n.lower() for k in kws)]
@@ -165,9 +182,11 @@ def classify(names: list[str], categories: dict[str, list[str]]) -> dict[str, li
 
 
 def stratified_pick(names: list[str], limit: int) -> list[str]:
-    """分层抽样：等步长取样，避免同类素材扎堆（移植自 03 号脚本 pick()）。
+    """Stratified sampling: pick at even strides to avoid clustering of the
+    same asset type (ported from pick() in script 03).
 
-    同时按文件名前 12 字符去重，防止同一素材的 _a/_b 变体占满名额。
+    Also dedupes by the first 12 characters of the file name so that _a/_b
+    variants of the same asset do not fill the quota.
     """
     if limit <= 0 or not names:
         return []
@@ -187,18 +206,20 @@ def stratified_pick(names: list[str], limit: int) -> list[str]:
 
 
 def scan_package(package_id: str, per_category: int = 5) -> ScanResult:
-    """只读扫描：统计总数、分类分布、每类抽样若干路径。
+    """Read-only scan: total counts, category distribution, and a few sampled
+    paths per category.
 
-    本函数是「低风险只读」能力的实现，不写任何文件，因此不需要人工审批。
+    This function implements the "low-risk read-only" capability: it writes
+    no files and therefore needs no human approval.
     """
     pkg = get_package(package_id)
     if pkg is None:
-        raise KeyError(f"未登记的素材包: {package_id}（默认拒绝）")
+        raise KeyError(f"Unregistered asset package: {package_id} (denied by default)")
     source = Path(pkg.path)
 
     if pkg.fmt == "team-zip":
         if not source.is_file():
-            raise FileNotFoundError(f"素材包不存在: {source}")
+            raise FileNotFoundError(f"Asset package not found: {source}")
         with zipfile.ZipFile(source) as z:
             names = _list_images_zip(z)
     else:
@@ -213,7 +234,7 @@ def scan_package(package_id: str, per_category: int = 5) -> ScanResult:
     )
 
 
-# ---------------------------------------------------------------- 导出（副作用）
+# ---------------------------------------------------------------- Export (side effects)
 
 def extract_assets(
     package_id: str,
@@ -222,18 +243,22 @@ def extract_assets(
     per_category: int = 3,
     size: int | None = None,
 ) -> dict[str, Any]:
-    """把抽样结果落到磁盘 —— 本模块唯一的写副作用发生地。
+    """Persist the sampled results to disk — the sole place in this module
+    with write side effects.
 
-    调用方必须已经过了三道闸（权限 → 授权 → 审批）；本函数不做任何策略判断，
-    保证「策略」与「执行」分离：策略可测试，执行可审计。
+    Callers must have already passed the three gates (permissions →
+    authorization → approval); this function makes no policy decisions of its
+    own, keeping "policy" and "execution" separate: policy stays testable,
+    execution stays auditable.
 
-    size: 若给出，则等比缩放到该边长（缩略图模式，减少磁盘占用）。
+    size: if given, proportionally scale down to that edge length (thumbnail
+    mode, reducing disk usage).
     """
-    from PIL import Image  # 可选依赖：仅真正导出时才导入
+    from PIL import Image  # Optional dependency: imported only when actually exporting
 
     pkg = get_package(package_id)
     if pkg is None:
-        raise KeyError(f"未登记的素材包: {package_id}（默认拒绝）")
+        raise KeyError(f"Unregistered asset package: {package_id} (denied by default)")
 
     want = set(categories) if categories else None
     scan = scan_package(package_id, per_category=per_category)
@@ -250,7 +275,8 @@ def extract_assets(
     source = Path(pkg.path)
 
     def _save(raw: bytes, rel: str) -> None:
-        """把一张图按 rel 的相对路径落盘，保留 alpha（立绘/图标不能合底色）。"""
+        """Write one image to disk at the relative path rel, preserving alpha
+        (characters/icons must not be flattened onto a background color)."""
         im = Image.open(io.BytesIO(raw))
         im = im.convert("RGBA")
         if size is not None:
@@ -265,7 +291,7 @@ def extract_assets(
             for rel in picked:
                 try:
                     _save(z.read(rel), rel.replace("data/gfx/", ""))
-                except Exception as exc:  # 单张失败不影响整批，但必须暴露
+                except Exception as exc:  # a single failure must not break the batch, but must be surfaced
                     written.append(f"FAILED:{rel}:{exc}")
     else:
         for rel in picked:
@@ -276,5 +302,5 @@ def extract_assets(
         "out_dir": str(out_root),
         "requested_categories": sorted(want) if want else "ALL",
         "written_count": len(written),
-        "written": written[:50],  # 只回前 50 条，避免 MCP 响应过大
+        "written": written[:50],  # return only the first 50 entries to keep MCP responses small
     }

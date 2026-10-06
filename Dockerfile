@@ -1,9 +1,9 @@
-# v1 镜像：轻量起步；v2 将加入 ollama 服务容器由 compose 编排
+# v1 image: lightweight starting point; v2 will add an ollama service container orchestrated by compose
 FROM python:3.12-slim
 
 WORKDIR /app
 
-# 先装依赖再拷代码，最大化层缓存
+# Install dependencies before copying code to maximize layer caching
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

@@ -1,5 +1,6 @@
-"""agents 包 —— v3 治理编排层（LangGraph）。
+"""agents package — v3 governance orchestration layer (LangGraph).
 
-依赖 langgraph（requirements.txt 已启用）。设计红线见 singapore/docs/068：
-挂起/恢复原语完全复用 LangGraph interrupt()/Command，我们只做"组装 + 治理外壳"。
+Depends on langgraph (enabled in requirements.txt). Design red lines per
+singapore/docs/068: the suspend/resume primitives fully reuse LangGraph's
+interrupt()/Command; we only do "assembly + a governance shell".
 """

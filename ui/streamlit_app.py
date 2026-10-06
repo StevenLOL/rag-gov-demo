@@ -1,12 +1,14 @@
-"""rag-gov-demo 演示 UI（v2 入口）。
+"""rag-gov-demo showcase UI (v2 entry point).
 
-启动：streamlit run ui/streamlit_app.py   （或 make ui，见 Makefile）
-功能：
-1. 问答：POST {API}/ask，渲染答案/拒答原因 + 引用列表；
-2. 审计：GET {API}/audit，侧栏查看最近事件（拒答也落审计的直观证据）；
-3. 治理预告（v3b）：审批卡 UI 将挂在本页——高风险动作的 approve/reject 按钮在此出现。
+Launch: streamlit run ui/streamlit_app.py   (or make ui, see the Makefile)
+Features:
+1. Q&A: POST {API}/ask, renders the answer / refusal reason + citation list;
+2. Audit: GET {API}/audit, view recent events in the sidebar (direct evidence that
+   refusals are audited too);
+3. Governance preview (v3b): the approval card UI will live on this page — the
+   approve/reject buttons for high-risk actions appear here.
 
-依赖：API 服务已启动（uvicorn api.main:app）。
+Requires: the API service is already running (uvicorn api.main:app).
 """
 
 import json
@@ -16,58 +18,60 @@ import streamlit as st
 
 st.set_page_config(page_title="rag-gov-demo", page_icon="🛡", layout="wide")
 
-# ---- 侧栏：API 地址与健康状态 ----
+# ---- Sidebar: API address and health status ----
 with st.sidebar:
     st.title("rag-gov-demo")
-    st.caption("治理优先的 agentic RAG 参考实现")
-    api_base = st.text_input("API 地址", value="http://localhost:8000")
+    st.caption("Governance-first agentic RAG reference implementation")
+    api_base = st.text_input("API address", value="http://localhost:8000")
 
-    if st.button("检查健康状态"):
+    if st.button("Check health"):
         try:
             health = httpx.get(f"{api_base}/health", timeout=5).json()
-            st.success(f"在线 · 语料 {health['chunks']} 个片段")
-        except Exception as exc:  # noqa: BLE001 —— UI 层捕获并提示，不崩
-            st.error(f"API 不可达：{exc}")
+            st.success(f"Online · {health['chunks']} corpus chunks indexed")
+        except Exception as exc:  # noqa: BLE001 — caught and surfaced in the UI, no crash
+            st.error(f"API unreachable: {exc}")
 
     st.divider()
-    st.subheader("审计日志（最近 10 条）")
-    if st.button("刷新审计"):
+    st.subheader("Audit log (last 10 events)")
+    if st.button("Refresh audit"):
         try:
             events = httpx.get(f"{api_base}/audit", timeout=5).json()["events"]
             st.json(json.dumps(events[-10:], ensure_ascii=False, indent=2))
         except Exception as exc:  # noqa: BLE001
-            st.error(f"审计不可达：{exc}")
+            st.error(f"Audit unreachable: {exc}")
 
-# ---- 主区：问答 ----
-st.header("资料问答（引用 + 拒答）")
+# ---- Main area: Q&A ----
+st.header("Corpus Q&A (citations + refusal)")
 question = st.text_input(
-    "你的问题",
-    placeholder="例：高风险动作执行前需要什么流程？",
+    "Your question",
+    placeholder="e.g. 高风险动作执行前需要什么流程？(ask in Chinese — the corpus is Chinese)",
 )
 
-if st.button("提问", type="primary") and question:
+if st.button("Ask", type="primary") and question:
     try:
         resp = httpx.post(f"{api_base}/ask", json={"question": question}, timeout=30)
         result = resp.json()
     except Exception as exc:  # noqa: BLE001
-        st.error(f"请求失败：{exc}")
+        st.error(f"Request failed: {exc}")
         st.stop()
 
     if result.get("refused"):
-        st.warning(f"**已拒答**：{result['refusal_reason']}")
-        st.caption("拒答是设计行为：资料中无依据时，系统拒绝编造。本次拒答已写入审计日志。")
+        st.warning(f"**Refused**: {result['refusal_reason']}")
+        st.caption("Refusal is by design: with no grounding in the corpus, the system "
+                   "declines to fabricate. This refusal has been written to the audit log.")
     else:
         st.markdown(result["answer"])
         mode = result.get("mode", "extractive")
-        st.caption(f"生成模式：{mode}" + ("（本地 LLM）" if mode == "llm" else "（抽取式降级）"))
+        st.caption(f"Answer mode: {mode}" + (" (local LLM)" if mode == "llm" else " (extractive fallback)"))
 
-        st.subheader("引用")
+        st.subheader("Citations")
         for c in result.get("citations", []):
             with st.expander(f"[{c['ref']}] {c['source']} · {c['title']}"):
                 st.write(c["snippet"])
 
 st.divider()
 st.caption(
-    "v3b 预告：高风险动作（导出报告/删除记录）将在此页面弹出审批卡，"
-    "approve/reject 决定经 LangGraph Command(resume=...) 恢复执行。"
+    "v3b preview: high-risk actions (export report / delete record) will pop up an "
+    "approval card on this page; approve/reject decisions resume execution via "
+    "LangGraph Command(resume=...)."
 )

@@ -1,18 +1,19 @@
-"""LLM 客户端测试（v1 收尾：模型自动发现 + 可用性探测）。
+"""LLM client tests (v1 wrap-up: automatic model discovery + availability probing).
 
-全部用 monkeypatch 替身，不依赖本机是否真的装了 Ollama——CI 里也必须稳定可跑。
+Everything uses monkeypatch doubles and does not depend on whether Ollama is actually
+installed locally — the tests must also run reliably in CI.
 """
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from api.main import app  # api 是顶层包（不在 ragdemo 下）
+from api.main import app  # api is a top-level package (not under ragdemo)
 from ragdemo import llm
 
 
 class _FakeResponse:
-    """httpx 响应替身。"""
+    """httpx response double."""
 
     def __init__(self, payload: dict, ok: bool = True):
         self._payload = payload
@@ -46,19 +47,21 @@ def test_is_available_true_and_false(monkeypatch):
 
 
 def test_resolve_model_prefers_configured(monkeypatch):
-    """本机有配置模型时优先用它。"""
+    """When the configured model is available locally, prefer it."""
     _patch_tags(monkeypatch, ["qwen2.5:7b", "granite4.2:3b"])
     assert llm.resolve_model(preferred="qwen2.5:7b") == "qwen2.5:7b"
 
 
 def test_resolve_model_falls_back_to_same_family(monkeypatch):
-    """配置 qwen2.5:7b 但本机只有 qwen2.5:3b → 同系列回退（本机就是这个情况）。"""
+    """Configured qwen2.5:7b but only qwen2.5:3b exists locally -> same-family fallback
+    (this is the actual local setup)."""
     _patch_tags(monkeypatch, ["qwen2.5:3b"])
     assert llm.resolve_model(preferred="qwen2.5:7b") == "qwen2.5:3b"
 
 
 def test_resolve_model_falls_back_to_any_local_model(monkeypatch):
-    """同系列也没有 → 用第一个可用模型，而不是每次请求都超时降级。"""
+    """No same-family model either -> use the first available model, instead of timing
+    out and degrading on every request."""
     _patch_tags(monkeypatch, ["granite4.2:3b"])
     assert llm.resolve_model(preferred="qwen2.5:7b") == "granite4.2:3b"
 
@@ -69,12 +72,12 @@ def test_resolve_model_none_when_service_down(monkeypatch):
 
 
 def test_generate_builds_prompt_with_citations(monkeypatch):
-    """生成请求必须带上带编号的资料块，并强制回答标注 [n]。"""
+    """Generation requests must carry numbered source blocks and force answers to cite [n]."""
     captured = {}
 
     def fake_post(url, json=None, **kwargs):
         captured.update(url=url, payload=json)
-        return _FakeResponse({"response": "需要人工批准 [1]"})
+        return _FakeResponse({"response": "Human approval required [1]"})
 
     monkeypatch.setattr(llm.httpx, "post", fake_post)
 
@@ -84,25 +87,28 @@ def test_generate_builds_prompt_with_citations(monkeypatch):
         text = "高风险动作必须人工批准。"
 
     answer = llm.generate("高风险动作要批准吗", [Chunk()], model="granite4.2:3b")
-    assert answer == "需要人工批准 [1]"
+    assert answer == "Human approval required [1]"
     assert captured["payload"]["model"] == "granite4.2:3b"
     assert "[1]" in captured["payload"]["prompt"]
     assert "高风险动作要批准吗" in captured["payload"]["prompt"]
     assert captured["payload"]["options"]["temperature"] == 0.2
-    # 防无限生成：硬性 token 上限 + 关闭思考模式（本机 granite4.2 实测 >60s → ~1.7s）
+    # Guard against unbounded generation: hard token cap + thinking mode off
+    # (measured on local granite4.2: >60s -> ~1.7s)
     assert captured["payload"]["options"]["num_predict"] > 0
     assert captured["payload"].get("think") is False
 
 
 def test_generate_raises_when_no_model(monkeypatch):
-    """没有可用模型时明确报错（上层降级），不静默返回空串。"""
+    """When no model is available, raise a clear error (the caller degrades) instead of
+    silently returning an empty string."""
     monkeypatch.setattr(httpx, "get", lambda *a, **k: (_ for _ in ()).throw(httpx.ConnectError("down")))
     with pytest.raises(RuntimeError):
         llm.generate("问题", [])
 
 
 def test_health_exposes_runtime_shape():
-    """/health 必须暴露检索后端与 LLM 状态——部署排障靠它。"""
+    """/health must expose the retrieval backend and LLM status — deployment
+    troubleshooting depends on it."""
     client = TestClient(app)
     data = client.get("/health").json()
     assert data["status"] == "ok" and data["chunks"] > 0

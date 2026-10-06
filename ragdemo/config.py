@@ -1,23 +1,29 @@
-"""集中配置：路径、阈值、外部服务地址。
+"""Centralized configuration: paths, thresholds, and external service addresses.
 
-设计原则：
-1. 全部有默认值——clone 下来不配任何环境变量即可运行；
-2. 数据面默认"不出域"——语料、索引、审计全部在仓库本地目录内；
-3. 远端服务（Ollama 之外的 LLM API）一律不写死在代码里，v2 对照实验时经环境变量注入。
+Design principles:
+1. Everything has a default value -- the code runs right after cloning with no env vars set;
+2. The data plane stays "in-domain" by default -- corpus, index, and audit all live in local
+   repository directories;
+3. Remote services (LLM APIs other than Ollama) are never hardcoded; for v2 comparison
+   experiments they are injected via environment variables.
 """
 
 import os
 from pathlib import Path
 
-# 仓库根目录（ragdemo/config.py 的上一级）
+# Repository root (one level above ragdemo/config.py)
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# ---- 数据路径（全部本地闭环）----
-# 语料档位：同一套代码挂不同知识库，靠 CORPUS_PROFILE 切换（API / UI / MCP 全链路生效）。
-#   gov    —— 治理教学语料（data/corpus，5 篇 / 15 chunk）：单元测试与 CI 的默认档，勿动；
-#   legacy —— 真实 dosgames 逆向文档（data/corpus_legacy，37 篇 / 1052 chunk）：演示与压测档。
-# 为什么用档位而不是直接改默认目录：tests/ 里的检索/引用用例断言的是治理语料的内容，
-# 一旦默认目录改成 legacy，这些用例会全部失效——档位化可以让两套语料并存互不破坏。
+# ---- Data paths (fully local, self-contained) ----
+# Corpus profiles: the same code can mount different knowledge bases, switched via
+# CORPUS_PROFILE (effective across the whole API / UI / MCP stack).
+#   gov    -- governance teaching corpus (data/corpus, 5 docs / 15 chunks): the default profile
+#             for unit tests and CI; do not touch;
+#   legacy -- real dosgames reverse-engineering docs (data/corpus_legacy, 37 docs / 1052 chunks):
+#             the demo and load-testing profile.
+# Why profiles instead of simply changing the default directory: the retrieval/citation tests in
+# tests/ assert on the governance corpus content; once the default directory becomes legacy,
+# those tests would all break -- profiles let the two corpora coexist without breaking each other.
 CORPUS_PROFILES: dict[str, Path] = {
     "gov": BASE_DIR / "data" / "corpus",
     "legacy": BASE_DIR / "data" / "corpus_legacy",
@@ -27,36 +33,45 @@ CORPUS_DIR = Path(
     os.getenv("CORPUS_DIR", str(CORPUS_PROFILES.get(_DEFAULT_PROFILE, CORPUS_PROFILES["gov"])))
 )
 AUDIT_LOG = Path(os.getenv("AUDIT_LOG", BASE_DIR / "data" / "audit" / "audit.jsonl"))
+# Persistence location of the governance graph checkpointer (SqliteSaver). Thread cursors are
+# stored here keyed by thread_id and survive process restarts; STATE_DB=":memory:" falls back
+# to an in-memory version (for test isolation).
+STATE_DB = Path(os.getenv("STATE_DB", BASE_DIR / "data" / "audit" / "state.db"))
 
-# ---- 拒答判定（双保险，见 citation.py 的说明）----
-# 覆盖率：查询词元在语料中出现的比例低于该值 → 拒答
+# ---- Refusal decision (two-gate safety net; see citation.py for details) ----
+# Coverage: refuse when the fraction of query tokens found in the corpus falls below this value
 REFUSAL_COVERAGE = float(os.getenv("REFUSAL_COVERAGE", 0.5))
-# BM25 top1 绝对分数低于该值 → 拒答
+# Refuse when the BM25 top-1 absolute score falls below this value
 RETRIEVAL_MIN_SCORE = float(os.getenv("RETRIEVAL_MIN_SCORE", 2.0))
 
-# ---- 检索后端（v2）：bm25（默认，零依赖）| vector（FAISS）| hybrid（RRF 融合）----
+# ---- Retrieval backend (v2): bm25 (default, zero deps) | vector (FAISS) | hybrid (RRF fusion) ----
 RETRIEVAL_BACKEND = os.getenv("RETRIEVAL_BACKEND", "bm25")
 
-# 嵌入模型（本地 sentence-transformers；国内下载建议 HF_ENDPOINT=https://hf-mirror.com）
+# Embedding model (local sentence-transformers; for faster downloads in China, set
+# HF_ENDPOINT=https://hf-mirror.com)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
-# 向量模式的拒答阈值（归一化后内积 = 余弦，范围 -1~1）
+# Refusal threshold for the vector backend (normalized inner product = cosine, range -1..1)
 VECTOR_MIN_SCORE = float(os.getenv("VECTOR_MIN_SCORE", 0.35))
 
-# ---- 本地 LLM（Ollama 兼容 HTTP API）----
+# ---- Local LLM (Ollama-compatible HTTP API) ----
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
-# 生成超时（秒）：本机实测 granite4.2:3b 冷启动（2.2GB 载入 GPU）约 34s，
-# 因此默认放宽到 60s 并配合启动预热——预热后单次生成降到数秒
+# Generation timeout (seconds): measured locally, granite4.2:3b cold start (2.2GB loaded onto
+# the GPU) takes about 34s, so the default is relaxed to 60s and paired with a startup warmup
+# -- after warmup, a single generation drops to a few seconds
 OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", 60))
-# 预热超时（秒）：仅用于启动时把模型载入常驻，允许更久
+# Warmup timeout (seconds): only used to load the model into memory at startup, so it may be
+# longer
 OLLAMA_WARMUP_TIMEOUT = float(os.getenv("OLLAMA_WARMUP_TIMEOUT", 180))
-# 模型常驻时长（Ollama keep_alive）：默认 10m，避免每次请求重新载入
+# Model residency (Ollama keep_alive): defaults to 10m so each request does not reload the model
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
-# 单次生成最大 token 数：不设上限时思考型模型（如本机 granite4.2）会一直生成到超时
+# Max tokens per generation: without a cap, thinking models (e.g. local granite4.2) keep
+# generating until timeout
 OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", 256))
-# 是否允许模型"思考"（thinking 模式）：关闭后本机的 granite4.2 从 >60s 降到 ~1.7s
+# Whether the model is allowed to "think" (thinking mode): when disabled, the local granite4.2
+# drops from >60s to ~1.7s
 OLLAMA_THINK = os.getenv("OLLAMA_THINK", "false").lower() == "true"
 
-# ---- v2/v3 预留 ----
-POSTGRES_DSN = os.getenv("POSTGRES_DSN", "")  # v2: 会话库 + v3: durable checkpointer
+# ---- Reserved for v2/v3 ----
+POSTGRES_DSN = os.getenv("POSTGRES_DSN", "")  # v2: session store + v3: durable checkpointer

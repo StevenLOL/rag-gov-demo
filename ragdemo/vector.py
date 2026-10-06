@@ -1,16 +1,24 @@
-"""向量检索后端（v2）。
+"""Vector retrieval backend (v2).
 
-设计要点（承接 docs/067 §3 与 docs/068 复用判定）：
-- 向量库：**FAISS IndexFlatIP**（本地内存索引，数据不出域）；
-- 相似度：嵌入时 `normalize_embeddings=True` → 单位向量 → **内积 = 余弦**（数学恒等），
-  因此可以直接用最快的 GEMM 内核，且分数天然落在 [-1, 1]；
-- 嵌入模型：本地 sentence-transformers 模型（默认 intfloat/multilingual-e5-small，384 维，
-  中文/英文都支持，体积 ~470MB；中英混排语料的首选轻量款）；
-- 模型下载：国内网络建议 `export HF_ENDPOINT=https://hf-mirror.com`；
-- 混合检索：BM25（稀疏）+ 向量（稠密）两路召回，RRF 融合（k=60），
-  拒答的覆盖率闸仍沿用 BM25 的词元覆盖（语义侧不设闸，避免误拒）。
+Design points (following docs/067 §3 and the reuse decision in docs/068):
+- Vector store: **FAISS IndexFlatIP** (local in-memory index; data never
+  leaves the domain);
+- Similarity: embeddings are built with `normalize_embeddings=True` -> unit
+  vectors -> **inner product = cosine** (a mathematical identity), so the
+  fastest GEMM kernel can be used directly and scores naturally fall in
+  [-1, 1];
+- Embedding model: local sentence-transformers model (default
+  intfloat/multilingual-e5-small, 384 dims, supports both Chinese and English,
+  ~470MB; the lightweight first choice for mixed Chinese/English corpora);
+- Model download: behind mainland-China networks, set
+  `export HF_ENDPOINT=https://hf-mirror.com` first;
+- Hybrid retrieval: BM25 (sparse) + vector (dense) dual recall with RRF
+  fusion (k=60); the refusal coverage gate still uses BM25 token coverage
+  (no gate on the semantic side, to avoid false refusals).
 
-依赖是可选的：未安装 sentence-transformers/faiss 时上层自动回退 BM25（见 retriever.build_index）。
+Dependencies are optional: when sentence-transformers/faiss are not
+installed, the upper layer automatically falls back to BM25 (see
+retriever.build_index).
 """
 
 from __future__ import annotations
@@ -19,7 +27,8 @@ import os
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol
 
-# numpy 只在向量路径真正用到；用 TYPE_CHECKING 保持 import ragdemo.vector 不强制依赖 numpy
+# numpy is only actually used on the vector path; TYPE_CHECKING keeps
+# `import ragdemo.vector` from forcing a numpy dependency
 if TYPE_CHECKING:
     import numpy as np
 
@@ -28,7 +37,7 @@ from .retriever import Backend, Bm25Backend, Hit
 
 
 class Embedder(Protocol):
-    """嵌入器协议（便于替换为 Ollama bge-m3 或云端对照实验）。"""
+    """Embedder protocol (easy to swap in Ollama bge-m3 or cloud A/B experiments)."""
 
     def encode_passages(self, texts: list[str]) -> "np.ndarray": ...
     def encode_query(self, query: str) -> "np.ndarray": ...
@@ -36,7 +45,7 @@ class Embedder(Protocol):
 
 @dataclass
 class SentenceTransformerEmbedder:
-    """本地 sentence-transformers 嵌入器（懒加载模型，首次使用才下载/载入）。"""
+    """Local sentence-transformers embedder (lazy model load; downloads/loads on first use)."""
 
     model_name: str = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
     device: str = os.getenv("EMBEDDING_DEVICE", "cpu")
@@ -44,31 +53,34 @@ class SentenceTransformerEmbedder:
     _model: object = field(default=None, init=False, repr=False)
 
     def _load(self) -> object:
-        """加载模型：优先用本地缓存（离线友好、秒开），缓存缺失时才联网下载。"""
+        """Load the model: prefer the local cache (offline-friendly, instant
+        startup); only download over the network when the cache is missing."""
         if self._model is None:
-            from sentence_transformers import SentenceTransformer  # 本地依赖，延迟导入
+            from sentence_transformers import SentenceTransformer  # local dep, lazy import
             try:
                 self._model = SentenceTransformer(
                     self.model_name, device=self.device, local_files_only=True
                 )
-            except Exception:  # noqa: BLE001 —— 缓存缺失 → 走正常下载路径
-                # 国内网络建议先 export HF_ENDPOINT=https://hf-mirror.com
+            except Exception:  # noqa: BLE001 -- cache missing -> normal download path
+                # On mainland-China networks, export HF_ENDPOINT=https://hf-mirror.com first
                 self._model = SentenceTransformer(self.model_name, device=self.device)
         return self._model
 
     @property
     def _is_e5(self) -> bool:
-        """e5 系列要求 query/passage 前缀，否则召回率明显下降。"""
+        """e5-family models require query/passage prefixes, otherwise recall drops notably."""
         return "e5" in self.model_name.lower()
 
     @property
     def _bge_zh_instruction(self) -> str:
-        """bge-zh 系列查询侧需要检索指令前缀（文档侧不加）。"""
+        """bge-zh-family models need a retrieval instruction prefix on the query side
+        (not on the document side)."""
         name = self.model_name.lower()
         return "为这个句子生成表示以用于检索相关文章：" if ("bge" in name and "zh" in name) else ""
 
     def encode_passages(self, texts: list[str]) -> "np.ndarray":
-        """文档侧编码：加 passage 前缀（e5），归一化后返回 float32 矩阵。"""
+        """Document-side encoding: adds the passage prefix (e5) and returns a normalized
+        float32 matrix."""
         import numpy as np
 
         model = self._load()
@@ -79,7 +91,8 @@ class SentenceTransformerEmbedder:
         return np.asarray(vectors, dtype="float32")
 
     def encode_query(self, query: str) -> "np.ndarray":
-        """查询侧编码：e5 加 query 前缀、bge-zh 加指令前缀，形状 (1, dim)。"""
+        """Query-side encoding: e5 gets a query prefix, bge-zh gets an instruction
+        prefix; shape is (1, dim)."""
         import numpy as np
 
         model = self._load()
@@ -95,19 +108,20 @@ class SentenceTransformerEmbedder:
 
 @dataclass
 class FaissBackend:
-    """FAISS 内积索引（归一化后等价于余弦相似度）。"""
+    """FAISS inner-product index (equivalent to cosine similarity after normalization)."""
 
     chunks: list[Chunk]
     embedder: Embedder
     _index: object = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        import faiss  # 本地依赖，延迟导入
+        import faiss  # local dep, lazy import
 
         vectors = self.embedder.encode_passages(
             [f"{c.title}\n{c.text}" for c in self.chunks]
         )
-        # 内积索引：向量已归一化 → 检索分数就是余弦相似度
+        # Inner-product index: vectors are already normalized -> retrieval scores
+        # are cosine similarities
         self._index = faiss.IndexFlatIP(vectors.shape[1])
         self._index.add(vectors)
 
@@ -120,17 +134,19 @@ class FaissBackend:
         ]
 
     def coverage(self, query: str) -> float:
-        """语义检索不做词元覆盖闸——拒答改由余弦阈值判定（见 citation.answer_question）。"""
+        """No token-coverage gate for semantic retrieval — refusal is instead decided
+        by a cosine threshold (see citation.answer_question)."""
         return 1.0
 
 
 @dataclass
 class HybridBackend:
-    """混合检索：BM25（稀疏）+ 向量（稠密），RRF 融合。
+    """Hybrid retrieval: BM25 (sparse) + vector (dense), fused with RRF.
 
-    RRF（Reciprocal Rank Fusion）：score = Σ 1/(k + rank)，k=60。
-    优点：两路分数尺度不同（BM25 分数量级不定、余弦在 [-1,1]），
-    用排名融合无需归一化分数，鲁棒且无需调参。
+    RRF (Reciprocal Rank Fusion): score = Σ 1/(k + rank), k=60.
+    Advantage: the two channels have different score scales (BM25 magnitudes
+    vary, cosine is in [-1, 1]); rank-based fusion needs no score
+    normalization — robust and parameter-free.
     """
 
     bm25: Backend
@@ -143,7 +159,8 @@ class HybridBackend:
         for backend in (self.bm25, self.vector):
             try:
                 hits = backend.search(query, top_k=top_k * 2)
-            except Exception:  # noqa: BLE001 —— 单路失败不拖垮整体（降级为另一路）
+            except Exception:  # noqa: BLE001 -- one channel failing must not drag down
+                # the whole result (degrade to the other channel)
                 continue
             for rank, hit in enumerate(hits, start=1):
                 key = hit.chunk.chunk_id
@@ -153,15 +170,17 @@ class HybridBackend:
         return [Hit(chunk=found[key], score=score) for key, score in ordered]
 
     def coverage(self, query: str) -> float:
-        """覆盖率闸沿用 BM25 的词元覆盖——语义侧不设闸，避免对同义改写误拒。"""
+        """The coverage gate reuses BM25 token coverage — no gate on the semantic side,
+        avoiding false refusals on synonymous paraphrases."""
         return getattr(self.bm25, "coverage", lambda _q: 1.0)(query)
 
 
 def build_vector_backend(chunks: list[Chunk]) -> Backend:
-    """工厂：向量后端（缺依赖时抛异常，由 retriever.build_index 回退 BM25）。"""
+    """Factory: vector backend (raises when dependencies are missing; retriever.build_index
+    falls back to BM25)."""
     return FaissBackend(chunks=chunks, embedder=SentenceTransformerEmbedder())
 
 
 def build_hybrid_backend(chunks: list[Chunk]) -> Backend:
-    """工厂：BM25 + 向量混合后端。"""
+    """Factory: BM25 + vector hybrid backend."""
     return HybridBackend(bm25=Bm25Backend(chunks=chunks), vector=build_vector_backend(chunks))

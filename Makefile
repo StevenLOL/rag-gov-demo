@@ -1,48 +1,48 @@
-# rag-gov-demo 开发快捷命令
-# 用法：make <target>   （Windows Git Bash 下可用）
+# rag-gov-demo developer quick commands
+# Usage: make <target>   (works under Git Bash on Windows)
 
 .PHONY: run run-legacy test eval eval-legacy eval-hybrid ui mcp mcp-demo clean
 
-# 启动 API（开发模式，自动重载）
+# Start the API (dev mode with auto-reload)
 run:
 	uvicorn api.main:app --reload --port 8000
 
-# 同上，但知识库挂真实 dosgames 逆向语料（37 篇 / 1052 chunk）
+# Same as above, but the knowledge base mounts the real dosgames reverse-engineering corpus (37 docs / 1052 chunks)
 run-legacy:
 	CORPUS_PROFILE=legacy uvicorn api.main:app --reload --port 8000
 
-# 启动 MCP server（stdio，供任意 MCP 客户端连接）
+# Start the MCP server (stdio, for connecting any MCP client)
 mcp:
 	python mcp_server.py
 
-# 四段治理剧情脚本化演示（无需 MCP 客户端，面试演示用）
+# Scripted demo of the four-act governance storyline (no MCP client needed, for interview demos)
 mcp-demo:
 	python mcp_server.py --selftest
 
-# 启动演示 UI（需先 make run）
+# Start the demo UI (requires `make run` first)
 ui:
 	streamlit run ui/streamlit_app.py
 
-# 跑全部测试（含治理 schema 测试；v3 用例标记 skip）
+# Run the full test suite (including governance schema tests; v3 cases marked skip)
 test:
 	python -m pytest tests/ -v
 
-# 跑检索质量评估（治理教学语料 + golden_set.json）
+# Run the retrieval quality evaluation (governance teaching corpus + golden_set.json)
 eval:
 	python evaluation/run_eval.py
 
-# 跑真实语料评估：37 篇 dosgames 逆向文档 / 1052 chunk（BM25 基线）
-# 实测（2026-09-30）：recall@5 = 29/31，top1 = 23/31
+# Run evaluation on the real corpus: 37 dosgames reverse-engineering docs / 1052 chunks (BM25 baseline)
+# Measured (2026-09-30): recall@5 = 29/31, top1 = 23/31
 eval-legacy:
 	python evaluation/run_eval.py --corpus-profile legacy --golden evaluation/golden_set_legacy.json
 
-# 同上，但换成 BM25 ⊕ 向量（RRF 融合）后端——用于对照"词法检索的固有缺陷"
-# 实测（2026-09-30）：recall@5 = 31/31，top1 = 26/31
+# Same as above, but with the BM25 ⊕ vector (RRF fusion) backend — used to contrast "inherent lexical retrieval flaws"
+# Measured (2026-09-30): recall@5 = 31/31, top1 = 26/31
 eval-hybrid:
 	RETRIEVAL_BACKEND=hybrid python evaluation/run_eval.py \
 		--corpus-profile legacy --golden evaluation/golden_set_legacy.json
 
-# 清理运行时产物
+# Clean up runtime artifacts
 clean:
 	rm -f data/audit/*.jsonl
 	rm -rf .pytest_cache __pycache__ ragdemo/__pycache__

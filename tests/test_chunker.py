@@ -1,4 +1,4 @@
-"""chunker 测试：标题切块、元数据、确定性。"""
+"""chunker tests: heading-based chunking, metadata, determinism."""
 
 from ragdemo.chunker import chunk_markdown
 
@@ -39,4 +39,4 @@ def test_intro_without_heading():
 def test_snippet_truncates():
     long_text = "# 标题\n\n" + "很长" * 200
     chunks = chunk_markdown(long_text, "long.md")
-    assert len(chunks[0].snippet) <= 121  # 120 字符 + 省略号
+    assert len(chunks[0].snippet) <= 121  # 120 characters + ellipsis

@@ -1,6 +1,6 @@
 """Vector retrieval backend (v2).
 
-Design points (following docs/067 §3 and the reuse decision in docs/068):
+Design points:
 - Vector store: **FAISS IndexFlatIP** (local in-memory index; data never
   leaves the domain);
 - Similarity: embeddings are built with `normalize_embeddings=True` -> unit
@@ -10,8 +10,8 @@ Design points (following docs/067 §3 and the reuse decision in docs/068):
 - Embedding model: local sentence-transformers model (default
   intfloat/multilingual-e5-small, 384 dims, supports both Chinese and English,
   ~470MB; the lightweight first choice for mixed Chinese/English corpora);
-- Model download: behind mainland-China networks, set
-  `export HF_ENDPOINT=https://hf-mirror.com` first;
+- Model download: if the default Hugging Face endpoint is slow or unreachable,
+  point `HF_ENDPOINT` at a mirror first;
 - Hybrid retrieval: BM25 (sparse) + vector (dense) dual recall with RRF
   fusion (k=60); the refusal coverage gate still uses BM25 token coverage
   (no gate on the semantic side, to avoid false refusals).
@@ -62,7 +62,8 @@ class SentenceTransformerEmbedder:
                     self.model_name, device=self.device, local_files_only=True
                 )
             except Exception:  # noqa: BLE001 -- cache missing -> normal download path
-                # On mainland-China networks, export HF_ENDPOINT=https://hf-mirror.com first
+                # If the default HF endpoint is slow or unreachable, set
+                # HF_ENDPOINT to a mirror first
                 self._model = SentenceTransformer(self.model_name, device=self.device)
         return self._model
 

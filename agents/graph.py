@@ -1,7 +1,6 @@
 """v3 governance orchestration (v3a stage: minimal runnable version).
 
-Implemented (aligned with the singapore/docs/067 §3.3 skeleton and the
-docs/068 reuse criteria):
+Implemented in this stage:
 - Three gates: permission gate (scopes.yaml whitelist) → authorization gate
   (asset_policy.yaml use whitelist) → risk gate (suspend via interrupt when
   risk=high);

@@ -290,7 +290,7 @@ def serve(stdin=None, stdout=None) -> None:  # pragma: no cover - interactive lo
 
 def selftest() -> int:  # pragma: no cover - manual demo entry point
     """Scripted self-check conversation: renders the four key scenarios as
-    readable log lines (for interview demos).
+    readable log lines (for scripted demos).
 
     Governance meaning of the four scenarios:
       A  authorization-gate denial — using reference-only assets for ship is

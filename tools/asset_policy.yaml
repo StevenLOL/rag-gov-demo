@@ -23,6 +23,7 @@
 
 packages:
   tome-1.7.6-gfx:
+    # Local and machine-specific: point this at your own copy of the pack.
     path: E:/games/t-engine4-windows-1.7.6/game/modules/tome-1.7.6-gfx.team
     format: team-zip            # .team is actually a standard zip; all PNGs live under data/gfx/
     license: TE4-COPYING-MEDIA
@@ -35,7 +36,8 @@ packages:
       shipping them requires prior authorization (contact darkgod@te4.org).
 
   selfmade-assets:
-    path: C:/src/games/jinyong/assets
+    # Local, machine-specific: fill in your own directory of self-produced art.
+    path: ""
     format: directory
     license: own
     allowed_use: [reference, ship]

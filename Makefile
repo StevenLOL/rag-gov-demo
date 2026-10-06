@@ -7,7 +7,8 @@
 run:
 	uvicorn api.main:app --reload --port 8000
 
-# Same as above, but the knowledge base mounts the real dosgames reverse-engineering corpus (37 docs / 1052 chunks)
+# Same as above, but the knowledge base mounts the larger real-world corpus
+# (37 docs / 1052 chunks; not shipped in this repo — mount your own at data/corpus_legacy)
 run-legacy:
 	CORPUS_PROFILE=legacy uvicorn api.main:app --reload --port 8000
 
@@ -15,7 +16,7 @@ run-legacy:
 mcp:
 	python mcp_server.py
 
-# Scripted demo of the four-act governance storyline (no MCP client needed, for interview demos)
+# Scripted demo of the four-act governance storyline (no MCP client needed, good for a live walkthrough)
 mcp-demo:
 	python mcp_server.py --selftest
 
@@ -31,7 +32,7 @@ test:
 eval:
 	python evaluation/run_eval.py
 
-# Run evaluation on the real corpus: 37 dosgames reverse-engineering docs / 1052 chunks (BM25 baseline)
+# Run evaluation on the larger real-world corpus (37 docs / 1052 chunks, not shipped here; BM25 baseline)
 # Measured (2026-09-30): recall@5 = 29/31, top1 = 23/31
 eval-legacy:
 	python evaluation/run_eval.py --corpus-profile legacy --golden evaluation/golden_set_legacy.json

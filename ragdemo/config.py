@@ -19,8 +19,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # CORPUS_PROFILE (effective across the whole API / UI / MCP stack).
 #   gov    -- governance teaching corpus (data/corpus, 5 docs / 15 chunks): the default profile
 #             for unit tests and CI; do not touch;
-#   legacy -- real dosgames reverse-engineering docs (data/corpus_legacy, 37 docs / 1052 chunks):
-#             the demo and load-testing profile.
+#   legacy -- a second, larger real-world corpus (data/corpus_legacy, 37 docs /
+#             1052 chunks): the demo and load-testing profile. That corpus is
+#             not redistributed here, so this profile stays inert unless you
+#             mount your own documents at that path.
 # Why profiles instead of simply changing the default directory: the retrieval/citation tests in
 # tests/ assert on the governance corpus content; once the default directory becomes legacy,
 # those tests would all break -- profiles let the two corpora coexist without breaking each other.
@@ -47,8 +49,8 @@ RETRIEVAL_MIN_SCORE = float(os.getenv("RETRIEVAL_MIN_SCORE", 2.0))
 # ---- Retrieval backend (v2): bm25 (default, zero deps) | vector (FAISS) | hybrid (RRF fusion) ----
 RETRIEVAL_BACKEND = os.getenv("RETRIEVAL_BACKEND", "bm25")
 
-# Embedding model (local sentence-transformers; for faster downloads in China, set
-# HF_ENDPOINT=https://hf-mirror.com)
+# Embedding model (local sentence-transformers; if the default Hugging Face
+# endpoint is slow or unreachable, point HF_ENDPOINT at a mirror)
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "intfloat/multilingual-e5-small")
 EMBEDDING_DEVICE = os.getenv("EMBEDDING_DEVICE", "cpu")
 # Refusal threshold for the vector backend (normalized inner product = cosine, range -1..1)

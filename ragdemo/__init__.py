@@ -1,6 +1,6 @@
 """ragdemo — a governance-first agentic RAG reference implementation (v1 package).
 
-Layer mapping (see the repo README and singapore/docs/067 for details):
+Layer mapping (see the repo README):
 - v1: chunker / retriever / citation / llm / audit (the core of this package)
 - v2: containerization, Postgres session store, expanded eval (structure reserved)
 - v3: agents/graph.py (LangGraph governance orchestration, standalone placeholder,

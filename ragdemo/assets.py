@@ -1,25 +1,23 @@
 """Game art asset pack engine: scan / classify / stratified sampling / export
 (the sole place with side effects).
 
-[Reuse vs. build-from-scratch boundary — aligned with the L1-L7 criteria in
-singapore/docs/068]
-Reuse (L1-L2, don't reinvent the wheel):
-  - The classification keyword scheme, stratified sampling, and the
-    alpha-preserving approach are ported directly from the empirical scripts
-    C:/src/games/scripts/03_extract_tengine_gfx_samples.py (167 lines) and
-    C:/src/games/scripts/12_extract_tome_chars_equips.py (77 lines);
-    both scripts have been run against real assets: tome-1.7.6-gfx.team is
-    306 MB / 21161 PNG images.
-Build from scratch (L4-L7, what differentiates this project):
+Reuse vs. build-from-scratch boundary:
+
+Reused (low novelty, no reason to reinvent the wheel):
+  - The classification keyword scheme, stratified sampling and the
+    alpha-preserving export approach follow common practice for sprite packs.
+    While developing this, the reference pack used was a 306 MB Tales of
+    Maj'Eyal gfx archive holding 21,161 PNG images.
+Built from scratch (what actually differentiates this project):
   - License policy layer (asset_policy.yaml): "may we use this?" is upgraded
-    from script comments into an executable gate;
+    from a comment buried in a script into an executable gate;
   - Risk grading with human approval (scopes.yaml + LangGraph interrupt):
     bulk export is a high-risk action;
   - Audit trail: what was exported, how much, and who approved it — all of it
     goes into JSONL.
-In other words: extracting images itself is not valuable (Photoshop/remove.bg
-can do it); what is valuable is that "the extraction action is governed" —
-exactly the G1/G3/G4 dimensions of the DSO/Micron JD.
+
+In other words, extracting images is not the valuable part (any image tool can
+do that); what is valuable is that the extraction action itself is governed.
 
 [Dependencies] Pillow is optional: only needed for exporting thumbnails /
          compositing contact sheets; a pure scan/classify pass (read-only zip
@@ -130,8 +128,11 @@ def list_packages() -> list[dict[str, Any]]:
 
 
 def _source_exists(path: str) -> bool:
-    """Whether the asset source exists (local demo: the real 306 MB pack
-    lives at E:/games)."""
+    """Whether the asset source exists on this machine.
+
+    The paths in tools/asset_policy.yaml are local and machine-specific, so a
+    package reports exists=false until the operator fills in a real path.
+    """
     return bool(path) and os.path.exists(path)
 
 

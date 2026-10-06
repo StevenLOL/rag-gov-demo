@@ -5,14 +5,14 @@ Four things are asserted:
    retrieval/citation cases in tests/ are not "hijacked" by the real corpus;
 2. The legacy profile really loads a corpus of the correct scale (37 docs / 1,052
    chunks, not an empty directory);
-3. Distinctive-term retrieval works on the real corpus (verified with the df=1 anchor
-   terms mined by scripts 012/013);
+3. Distinctive-term retrieval works on the real corpus (verified with terms that
+   appear in exactly one document, i.e. df=1 anchors);
 4. Chunks from the two corpora never overlap — proving that profile switching truly
    swaps the knowledge base rather than mixing them together.
 
 Why the hybrid backend is not tested: the vector backend requires
 sentence-transformers and a local model, which are unavailable on CI; the hybrid
-comparison results are recorded in the README and docs/015, and are not covered by
+comparison results are recorded in the README, and are not covered by
 unit tests.
 """
 
@@ -48,7 +48,7 @@ def test_legacy_corpus_has_expected_scale():
 
 
 def test_distinctive_anchor_retrieves_its_document():
-    """A df=1 anchor term retrieves its document at top1 (anchors mined by scripts/013).
+    """A df=1 anchor term retrieves its document at top1.
 
     PKLite (only doc 017 in the whole corpus) and xentax (only doc 026) are chosen as
     the two hardest anchors: they are unaffected by the "same game having two

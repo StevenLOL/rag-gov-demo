@@ -10,7 +10,7 @@ apart from a "plain approval flow"]
   Gate 3  risk + interrupt   risk gate: high-risk actions -> suspend and wait
                              for a human decision (approve/reject)
 
-Key distinction (the point most likely to be probed in an interview):
+Key distinction — and the one that matters most here:
   - The approval gate is "let a human take a look"; the authorization gate is
     "this should not be done at all". Pushing an authorization question to
     human approval is a governance design flaw: the approver does not
@@ -20,9 +20,9 @@ Key distinction (the point most likely to be probed in an interview):
     call is blocked outright, without even a chance to suspend.
     This is asserted by tests/test_assets.py::test_license_gate_blocks_before_approval.
 
-[Why this is worth building] Aligns with Micron GenAI COE G4 (trust & control,
-15%) and the DSO JD's D3 (AI governance, 20%): turning a legal clause into one
-assertable line of code in CI.
+[Why this is worth building] An approval flow alone does not answer "may we do
+this at all". Turning a legal clause into an executable, assertable gate means
+CI can check it on every commit instead of trusting a reviewer's memory.
 """
 
 from __future__ import annotations

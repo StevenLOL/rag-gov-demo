@@ -8,6 +8,10 @@ venv/
 # Runtime artifacts (keep the audit directory structure, ignore contents)
 data/audit/*.jsonl
 
+# Durable LangGraph checkpointer (SqliteSaver writes this at runtime)
+data/audit/*.db
+data/audit/state.db
+
 # Local vector index cache (FAISS backend)
 *.faiss
 *.npy

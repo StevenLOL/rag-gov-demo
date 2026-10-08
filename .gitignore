@@ -8,6 +8,10 @@ venv/
 # Runtime artifacts (keep the audit directory structure, ignore contents)
 data/audit/*.jsonl
 
+# pytest temp root (must live inside the repo on this workstation;
+# see docs/ROADMAP.md "Local test command")
+.pytest_tmp/
+
 # Durable LangGraph checkpointer (SqliteSaver writes this at runtime)
 data/audit/*.db
 data/audit/state.db

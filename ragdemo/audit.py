@@ -17,13 +17,31 @@ from pathlib import Path
 
 from .config import AUDIT_LOG
 
+# Process-level destination override, set by the governance graph so that every
+# layer -- including the retrieval layer, which is not a graph node -- writes to
+# the same stream. Tests inject a temporary path here; without it, events land
+# in config.AUDIT_LOG.
+_ACTIVE_LOG: Path | None = None
+
+
+def set_log_path(path: Path | None) -> None:
+    """Redirect the whole process's audit stream (None restores the default)."""
+    global _ACTIVE_LOG
+    _ACTIVE_LOG = path
+
+
+def active_log_path() -> Path:
+    """Where an event goes when the caller does not name a path."""
+    return _ACTIVE_LOG or AUDIT_LOG
+
 
 def append_event(event_type: str, payload: dict, log_path: Path | None = None) -> None:
     """Append one audit event (JSONL, one event per line).
 
-    event_type: ask / refused (v1); v3 adds approval-type events.
+    event_type: ask / refused (v1); v3 adds approval-type events; v4d adds
+    `retrieval` (what the retriever actually handed to the model).
     """
-    path = log_path or AUDIT_LOG
+    path = log_path or _ACTIVE_LOG or AUDIT_LOG
     path.parent.mkdir(parents=True, exist_ok=True)
     record = {
         "ts": time.strftime("%Y-%m-%dT%H:%M:%S%z"),

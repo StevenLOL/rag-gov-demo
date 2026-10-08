@@ -1,3 +1,8 @@
+---
+acl: ["group:sre", "group:security"]
+sensitivity: confidential
+---
+
 # 违规与事故响应
 
 ## 违规使用处理

@@ -1,3 +1,8 @@
+---
+acl: ["*"]
+sensitivity: internal
+---
+
 # Agent 治理基础
 
 ## 人在回路（Human-in-the-loop）

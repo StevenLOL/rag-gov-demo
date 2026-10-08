@@ -24,7 +24,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Callable
 
-from . import assets
+from . import acl, assets, audit
 from .chunker import load_corpus
 from .config import CORPUS_DIR, RETRIEVAL_BACKEND
 from .retriever import build_index
@@ -60,21 +60,55 @@ def has_impl(tool: str) -> bool:
 # ---------------------------------------------------------------- retrieval
 
 @lru_cache(maxsize=1)
+def _chunks():
+    """Corpus chunks (in-process singleton). Kept separate from the index because
+    the permission filter needs the chunk list itself, not the index."""
+    return load_corpus(CORPUS_DIR)
+
+
+@lru_cache(maxsize=1)
 def _index():
     """Corpus index (in-process singleton; built once when the MCP server starts)."""
-    return build_index(load_corpus(CORPUS_DIR), RETRIEVAL_BACKEND)
+    return build_index(_chunks(), RETRIEVAL_BACKEND)
 
 
 @register("search_docs")
 def impl_search_docs(params: dict[str, Any]) -> dict[str, Any]:
     """Retrieve from the local governance corpus, returning snippets with provenance
-    (citations are the bottom line of RAG trustworthiness)."""
+    (citations are the bottom line of RAG trustworthiness).
+
+    Permission-aware (v4d): a principal is resolved first, then candidates are
+    filtered **before** ranking. An end-user path never runs unfiltered -- when
+    the caller declares no principal, the configured least-privileged default is
+    used rather than "everybody".
+    """
     query = params.get("query") or params.get("q") or ""
     top_k = int(params.get("top_k", 3))
-    hits = _index().search(query, top_k=top_k)
+    principal = acl.principal_from_dict(params.get("principal")) or acl.default_principal()
+    visible, hidden = acl.partition(_chunks(), principal)
+    hits = _index().search(query, top_k=top_k, principal=principal)
+
+    audit.append_event(
+        "retrieval",
+        {
+            "tool": "search_docs",
+            "principal": principal.to_dict(),
+            "query": query,
+            "top_k": top_k,
+            "returned": [h.chunk.chunk_id for h in hits],
+            # COUNT ONLY. Identifiers, titles or snippets of filtered-out chunks
+            # are never written here: the audit stream must not become a second,
+            # less-protected copy of the restricted corpus.
+            "filtered_out": len(hidden),
+        },
+    )
+
     return {
         "query": query,
         "top_k": top_k,
+        "principal": principal.to_dict(),
+        "visible_chunks": len(visible),
+        "filtered_out": len(hidden),
         "hits": [
             {
                 "chunk_id": h.chunk.chunk_id,

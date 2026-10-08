@@ -59,12 +59,24 @@ SERVER_INFO = {"name": "ragdemo-governed-mcp", "version": "0.3.0"}
 TOOLS: list[dict[str, Any]] = [
     {
         "name": "search_docs",
-        "description": "Search the local governance corpus; returns sourced passages (low risk, runs directly)",
+        "description": (
+            "Search the local governance corpus; returns sourced passages (low risk, "
+            "runs directly). Results are filtered by the caller's principal before "
+            "ranking — passages the principal may not read never enter the candidate set."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Search question"},
                 "top_k": {"type": "integer", "default": 3},
+                "principal": {
+                    "type": "object",
+                    "description": (
+                        "Who is asking: {\"id\": str, \"groups\": [str], "
+                        "\"clearance\": public|internal|confidential|restricted}. "
+                        "Omitted means the configured least-privileged default."
+                    ),
+                },
             },
             "required": ["query"],
         },

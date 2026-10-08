@@ -207,6 +207,9 @@ def build_graph(audit_log: Path | None = None, checkpointer: Any | None = None):
     """
     global _audit_log_path
     _audit_log_path = audit_log
+    # Retrieval-level events (v4d) are written outside this graph, so the
+    # process-wide destination has to move with it -- one stream, not two.
+    audit.set_log_path(audit_log)
 
     graph = StateGraph(GovState)
     graph.add_node("policy_gate", policy_gate)

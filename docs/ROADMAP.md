@@ -8,8 +8,8 @@ Status convention follows the README layer table. Reviewed and re-ordered
 
 | Increment | Theme | Primary files | Depends on | Status |
 |---|---|---|---|---|
-| **v4b** | Multi-agent orchestration: does authority survive delegation? | `agents/supervisor.py`, reuse `graph.py` gates | none | **in progress** |
-| **v4d** | Permission-aware retrieval (pre-filter) | `ragdemo/chunker.py`, `ragdemo/retriever.py`, `ragdemo/citation.py` | none | not started |
+| **v4b** | Multi-agent orchestration: does authority survive delegation? | `agents/supervisor.py`, reuse `graph.py` gates | none | ✅ shipped |
+| **v4d** | Permission-aware retrieval (pre-filter) | `ragdemo/acl.py`, `ragdemo/chunker.py`, `ragdemo/retriever.py`, `ragdemo/citation.py` | none | ✅ shipped |
 | **v4c** | Resilience: retry with backoff | `ragdemo/llm.py` | none | not started |
 | **v4a** | Pluggable retrieval backends + comparative evaluation | `ragdemo/retriever.py`, `evaluation/` | new optional dependency | not started |
 
@@ -106,12 +106,42 @@ Retrieval is an access decision, not a presentation concern.
    chunk, **and that the denied chunk does not appear in the audit log**.
 5. Record the boundary in `docs/RAI.md`: what is enforced, and what is not yet.
 
+### Design decisions actually taken
+
+- **The corpus declares its own ACL.** Each document carries a YAML
+  front-matter block (`acl`, `sensitivity`); every chunk cut from it inherits
+  that declaration unconditionally — there is no per-chunk override, so a chunk
+  cannot end up more readable than its source document. The block is stripped
+  at ingestion, so it never becomes retrievable text or embedding input.
+- **Two independent conditions, both required**: group/user membership in the
+  allow-list, *and* the chunk's sensitivity sitting at or below the principal's
+  clearance ceiling. An empty allow-list denies everybody — "unclassified" is
+  not a synonym for "public".
+- **`principal=None` means "do not filter"**, deliberately: the raw backend
+  stays usable for whole-corpus evaluation runs. Every path that serves an end
+  user resolves a principal first (the configured least-privileged default), so
+  an unfiltered query is an explicit choice rather than an oversight.
+- **The audit stream records the *count* of filtered-out chunks, never their
+  identifiers.** Logging what was withheld would turn the audit file into a
+  second, less-protected copy of the restricted corpus.
+- **A refusal caused by the filter is worded exactly like "nothing matched".**
+  Otherwise the refusal becomes an existence oracle for restricted material.
+
 ### Done when
 
-- [ ] Chunks carry permission metadata; the corpus declares it.
-- [ ] Retrieval accepts a principal and pre-filters before ranking.
-- [ ] Tests assert non-return **and** non-appearance in the audit stream.
-- [ ] `docs/RAI.md` states the current boundary honestly.
+- [x] Chunks carry permission metadata; the corpus declares it.
+- [x] Retrieval accepts a principal and pre-filters before ranking.
+- [x] Tests assert non-return **and** non-appearance in the audit stream.
+- [x] `docs/RAI.md` states the current boundary honestly.
+
+### One existing assertion changed on purpose
+
+`tests/test_governance.py::test_side_effect_executes_exactly_once_after_resume`
+used to assert the audit file had exactly two lines. The retrieval layer now
+writes its own `retrieval` event into the same stream, so the assertion counts
+`tool_executed` events instead. That is the point of the increment: one stream,
+so "the denied chunk never appears in the audit log" is a checkable statement
+rather than a claim.
 
 ---
 

@@ -7,12 +7,19 @@ Decision flow (two-gate safety net; thresholds in config.py):
 
 A refusal is not an error but a first-class response type: returns refused=True plus an
 explanatory message.
+
+Permission-aware retrieval (v4d): `answer_question` accepts a `Principal` and
+hands it to the backend, so the filter runs before ranking. When nothing
+survives the filter the refusal is worded exactly like "nothing matched" —
+deliberately indistinguishable, so a caller cannot probe for the *existence* of
+material they are not cleared to read.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .acl import Principal
 from .chunker import Chunk
 from .retriever import Bm25Backend, Hit
 
@@ -61,18 +68,34 @@ def answer_question(
     generate=None,
     refusal_coverage: float = 0.5,
     min_score: float = 2.0,
+    principal: Principal | None = None,
 ) -> Answer:
     """Main Q&A entry point.
 
-    generate: optional (question, context_chunks) -> str generation function (provided by
-              llm.py). When None or when the call fails, falls back to the extractive path
-              -- the demo never becomes unavailable just because a model is missing.
+    generate:  optional (question, context_chunks) -> str generation function (provided by
+               llm.py). When None or when the call fails, falls back to the extractive path
+               -- the demo never becomes unavailable just because a model is missing.
+    principal: who is asking. Passed straight to the backend, which filters before
+               ranking; None means "no filtering" (whole corpus visible).
     """
-    hits = index.search(question, top_k=3)
+    hits = index.search(question, top_k=3, principal=principal)
+
+    # Gate 0: nothing survived retrieval. On the permission-aware path this is
+    # where a fully-filtered query lands, and it must be indistinguishable from
+    # "the corpus simply has nothing on this" -- see the module docstring.
+    if not hits:
+        return Answer(
+            question=question,
+            refused=True,
+            refusal_reason=(
+                "No passage in the authorised set matches this question; "
+                "refusing to fabricate."
+            ),
+        )
 
     # Gate 1: coverage
     coverage = index.coverage(question)
-    if not hits or coverage < refusal_coverage:
+    if coverage < refusal_coverage:
         return Answer(
             question=question,
             refused=True,

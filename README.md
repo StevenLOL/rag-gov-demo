@@ -23,6 +23,8 @@ not as a slide deck.
 | v1 — Trusted retrieval | Citations + refusal (dual-gate), one command to run | ✅ Shipped |
 | v2 — Delivery maturity | Streamlit UI, FAISS/RRF hybrid retrieval, Ollama LLM | ✅ Shipped (Postgres pending) |
 | v3 — Controllable autonomy | LangGraph `interrupt()` approval, least-privilege scopes, IMDA-style governance docs | ✅ v3a shipped; approval-card UI pending |
+| v4b — Delegated authority | Supervisor/worker orchestration where every gate is re-evaluated per worker call | ✅ Shipped |
+| v4d — Permission-aware retrieval | Chunks inherit an ACL from their source; retrieval pre-filters by principal before ranking | ✅ Shipped |
 
 ## The three gates
 
@@ -57,6 +59,36 @@ Run the scripted four-act demo (block → suspend → approve → reject) with:
 ```bash
 python mcp_server.py --selftest
 ```
+
+## Retrieval is an access decision
+
+The three gates govern **agent actions**. They say nothing about **what the
+retriever is allowed to return**, so the corpus carries its own permissions
+and retrieval filters by principal *before* ranking:
+
+```markdown
+---
+acl: ["group:sre", "group:security"]
+sensitivity: confidential
+---
+```
+
+- Every chunk inherits the declaration of the document it was cut from; there
+  is no per-chunk override, so a chunk cannot end up more readable than its
+  source.
+- Two conditions, both required: the principal appears in the allow-list, and
+  the chunk's sensitivity sits at or below the principal's clearance ceiling.
+  An empty allow-list denies everybody — "unclassified" is not "public".
+- Pre-filtering, not post-filtering: a denied chunk never consumes a top-k
+  slot, so it cannot push an authorised passage out of the result. One test
+  asserts this directly, because "it wasn't returned" is also true of
+  post-filtering, which quietly destroys recall.
+- The audit stream records **how many** chunks were withheld, never which.
+
+Refusals caused by the filter are worded exactly like "nothing matched" —
+otherwise the refusal itself becomes an existence oracle for restricted
+material. `docs/RAI.md` lists what this does *not* cover (no authentication,
+and the dense path filters before truncation rather than before scoring).
 
 ## Quick start
 

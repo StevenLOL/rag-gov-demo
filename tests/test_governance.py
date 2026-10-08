@@ -11,6 +11,7 @@ Covers:
    in CI since v1).
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -128,6 +129,11 @@ def test_side_effect_executes_exactly_once_after_resume(tmp_path):
     assert low["executed"] == ["search_docs"]
     assert "__interrupt__" not in low
 
-    # Audit on disk: one event per execution
+    # Audit on disk: one tool_executed event per execution. The line count is
+    # deliberately NOT asserted -- since v4d the retrieval layer writes its own
+    # `retrieval` event into the same stream, which is what makes "the denied
+    # chunk never appears in the audit log" a checkable statement.
     audit_lines = (tmp_path / "audit.jsonl").read_text(encoding="utf-8").strip().splitlines()
-    assert len(audit_lines) == 2
+    event_types = [json.loads(line)["type"] for line in audit_lines]
+    assert event_types.count("tool_executed") == 2
+    assert "retrieval" in event_types

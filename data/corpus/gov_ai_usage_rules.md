@@ -1,3 +1,8 @@
+---
+acl: ["*"]
+sensitivity: internal
+---
+
 # 公共部门 AI 使用规则
 
 ## 问责原则

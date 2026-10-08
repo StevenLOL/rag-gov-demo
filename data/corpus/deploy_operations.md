@@ -1,3 +1,8 @@
+---
+acl: ["group:sre"]
+sensitivity: confidential
+---
+
 # Demo 部署与运维
 
 ## 本地部署

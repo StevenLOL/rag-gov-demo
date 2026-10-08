@@ -8,6 +8,8 @@ Two categories:
 
 import pytest
 
+from ragdemo import acl
+from ragdemo.acl import Principal
 from ragdemo.chunker import Chunk, load_corpus
 from ragdemo.config import CORPUS_DIR
 from ragdemo.retriever import Bm25Backend, Hit, build_index
@@ -15,16 +17,19 @@ from ragdemo.retriever import Bm25Backend, Hit, build_index
 
 class _FakeBackend:
     """Controllable fake backend: returns hits in the given order (used to verify that
-    RRF looks at ranks only, not scores)."""
+    RRF looks at ranks only, not scores).
+
+    It honours the Backend protocol, `principal` included, by applying the same
+    ACL rule the real backends use.
+    """
 
     def __init__(self, chunks: list[Chunk]):
         self.chunks = chunks
 
-    def search(self, query: str, top_k: int = 5) -> list[Hit]:
+    def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]:
         # Deliberately absurd score scale — verifies RRF is immune to score scale
-        return [
-            Hit(chunk=c, score=1000.0 - i) for i, c in enumerate(self.chunks[:top_k])
-        ]
+        hits = [Hit(chunk=c, score=1000.0 - i) for i, c in enumerate(self.chunks[:top_k])]
+        return acl.filter_hits(hits, principal)
 
     def coverage(self, query: str) -> float:
         return 1.0

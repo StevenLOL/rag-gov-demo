@@ -7,6 +7,17 @@ Why hand-written BM25 instead of vector retrieval:
   requires no changes upstream;
 - Bilingual tokenization: Latin text is split on words, CJK is split into single characters plus
   bigrams -- so the mixed Chinese/English governance corpus still matches.
+
+Permission-aware retrieval (v4d)
+--------------------------------
+`search()` takes an optional `Principal`. When one is supplied, chunks the
+principal may not read are removed **before ranking** — on this backend that
+means inside the scoring loop, so a denied chunk never receives a score at all.
+See `ragdemo/acl.py` for why the filter sits before the top-k cut.
+
+`principal=None` means "no filtering". That is deliberate: the raw backend stays
+usable for evaluation runs over the whole corpus. Every caller that serves an
+end user resolves a principal first (see `ragdemo.tools_impl.impl_search_docs`).
 """
 
 from __future__ import annotations
@@ -16,6 +27,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from . import acl
+from .acl import Principal
 from .chunker import Chunk
 
 _LATIN_RE = re.compile(r"[a-zA-Z0-9]+")
@@ -41,9 +54,14 @@ class Hit:
 
 
 class Backend(Protocol):
-    """Retrieval backend protocol (v2 will provide a FaissBackend implementation)."""
+    """Retrieval backend protocol (v2 will provide a FaissBackend implementation).
 
-    def search(self, query: str, top_k: int = 5) -> list[Hit]: ...
+    `principal` is part of the protocol, not an afterthought bolted onto one
+    implementation: a backend that cannot filter cannot claim to be a
+    replacement for one that can.
+    """
+
+    def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]: ...
 
 
 @dataclass
@@ -78,12 +96,18 @@ class Bm25Backend:
             return 0.0
         return math.log((self.n_docs - df + 0.5) / df + 1.0)
 
-    def search(self, query: str, top_k: int = 5) -> list[Hit]:
-        """Return the top_k hits sorted by BM25 score in descending order."""
+    def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]:
+        """Return the top_k hits sorted by BM25 score in descending order.
+
+        This is a genuine pre-filter: the visibility check sits at the top of
+        the scoring loop, so a chunk the principal may not read is never
+        scored, never ranked, and never truncated against a chunk they may.
+        """
         q_tokens = tokenize(query)
         scores = [0.0] * self.n_docs
+        visible = acl.visible_mask(self.chunks, principal)
         for i, tokens in enumerate(self.doc_tokens):
-            if not tokens:
+            if not tokens or not visible[i]:
                 continue
             tf: dict[str, int] = {}
             for t in tokens:

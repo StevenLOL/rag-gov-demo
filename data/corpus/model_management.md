@@ -1,3 +1,8 @@
+---
+acl: ["group:engineering", "group:ml-eng"]
+sensitivity: internal
+---
+
 # 模型接入与成本管理
 
 ## 模型准入

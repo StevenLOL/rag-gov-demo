@@ -14,7 +14,7 @@ from functools import partial
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-from ragdemo import audit, citation, llm
+from ragdemo import acl, audit, citation, llm
 from ragdemo.chunker import load_corpus
 from ragdemo.config import CORPUS_DIR, REFUSAL_COVERAGE, RETRIEVAL_BACKEND, RETRIEVAL_MIN_SCORE
 from ragdemo.retriever import build_index
@@ -67,6 +67,10 @@ class AskRequest(BaseModel):
     """POST /ask request body."""
 
     question: str
+    # v4d: who is asking, as {"id", "groups", "clearance"}. Declared by the
+    # caller and NOT verified -- this demo has no authentication; what it shows
+    # is that retrieval is filtered by principal once one exists.
+    principal: dict | None = None
 
 
 class CitationOut(BaseModel):
@@ -107,17 +111,22 @@ def ask(req: AskRequest) -> AskResponse:
     """Main Q&A endpoint: citation + refusal double gate, every request audited."""
     refresh_llm()  # If Ollama starts only later at runtime, it is discovered within 30 seconds
     generate = partial(llm.generate, model=_llm_state["model"]) if _llm_state["available"] else None
+    # Resolve the caller's principal before retrieval: the filter has to run
+    # before ranking, so it cannot be applied after the fact.
+    principal = acl.principal_from_dict(req.principal) or acl.default_principal()
     result = citation.answer_question(
         req.question,
         _index,
         generate=generate,  # When None, citation falls back to extractive mode
         refusal_coverage=REFUSAL_COVERAGE,
         min_score=RETRIEVAL_MIN_SCORE,
+        principal=principal,
     )
     audit.append_event(
         "refused" if result.refused else "ask",
         {
             "question": req.question,
+            "principal": principal.to_dict(),
             "mode": result.mode,
             "n_citations": len(result.citations),
             "reason": result.refusal_reason or "",

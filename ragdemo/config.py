@@ -40,6 +40,19 @@ AUDIT_LOG = Path(os.getenv("AUDIT_LOG", BASE_DIR / "data" / "audit" / "audit.jso
 # to an in-memory version (for test isolation).
 STATE_DB = Path(os.getenv("STATE_DB", BASE_DIR / "data" / "audit" / "state.db"))
 
+# ---- Permission-aware retrieval (v4d) ----
+# Default ACL for a document that declares none in its front matter. "*" keeps an
+# unclassified corpus behaving exactly as it did before the filter existed; in a
+# regulated corpus set this to a real group so that unclassified content is not
+# silently world-readable.
+CORPUS_DEFAULT_ACL = os.getenv("CORPUS_DEFAULT_ACL", "*")
+CORPUS_DEFAULT_SENSITIVITY = os.getenv("CORPUS_DEFAULT_SENSITIVITY", "internal")
+# The principal assumed when a request declares none (see ragdemo/acl.py: this
+# demo does not authenticate, it demonstrates the enforcement shape).
+PRINCIPAL_ID = os.getenv("PRINCIPAL_ID", "anonymous")
+PRINCIPAL_GROUPS = tuple(g.strip() for g in os.getenv("PRINCIPAL_GROUPS", "all-staff").split(",") if g.strip())
+PRINCIPAL_CLEARANCE = os.getenv("PRINCIPAL_CLEARANCE", "internal")
+
 # ---- Refusal decision (two-gate safety net; see citation.py for details) ----
 # Coverage: refuse when the fraction of query tokens found in the corpus falls below this value
 REFUSAL_COVERAGE = float(os.getenv("REFUSAL_COVERAGE", 0.5))

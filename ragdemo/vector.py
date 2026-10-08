@@ -32,6 +32,8 @@ from typing import TYPE_CHECKING, Protocol
 if TYPE_CHECKING:
     import numpy as np
 
+from . import acl
+from .acl import Principal
 from .chunker import Chunk
 from .retriever import Backend, Bm25Backend, Hit
 
@@ -126,13 +128,27 @@ class FaissBackend:
         self._index = faiss.IndexFlatIP(vectors.shape[1])
         self._index.add(vectors)
 
-    def search(self, query: str, top_k: int = 5) -> list[Hit]:
-        scores, ids = self._index.search(self.embedder.encode_query(query), top_k)
-        return [
+    def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]:
+        """Vector search, filtered by principal before the top-k cut.
+
+        `IndexFlatIP` is an exact (brute-force) index: it scores every vector
+        anyway, so widening the fetch to `ntotal` costs the same single GEMM as
+        fetching `top_k`. That makes it possible to filter *before* truncation
+        rather than after — denied chunks therefore never consume a top-k slot,
+        which is the recall damage post-filtering actually causes.
+
+        An approximate index (IVF/HNSW) cannot do this honestly; a production
+        deployment needs a filtered ANN index (for example pgvector filtering
+        inside the same SQL query). See docs/RAI.md.
+        """
+        fetch = self._index.ntotal if principal is not None else top_k
+        scores, ids = self._index.search(self.embedder.encode_query(query), max(int(fetch), top_k))
+        hits = [
             Hit(chunk=self.chunks[i], score=float(s))
             for s, i in zip(scores[0], ids[0])
             if i >= 0 and s > 0
         ]
+        return acl.filter_hits(hits, principal)[:top_k]
 
     def coverage(self, query: str) -> float:
         """No token-coverage gate for semantic retrieval — refusal is instead decided
@@ -154,12 +170,18 @@ class HybridBackend:
     vector: Backend
     rrf_k: int = 60
 
-    def search(self, query: str, top_k: int = 5) -> list[Hit]:
+    def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]:
         candidates: dict[str, float] = {}
         found: dict[str, Hit] = {}
         for backend in (self.bm25, self.vector):
             try:
-                hits = backend.search(query, top_k=top_k * 2)
+                hits = backend.search(query, top_k=top_k * 2, principal=principal)
+            except TypeError:
+                # A backend whose signature cannot take a principal is not a
+                # Backend. Fail loudly: swallowing this would silently drop a
+                # channel, and an empty result is indistinguishable from "the
+                # corpus had nothing relevant".
+                raise
             except Exception:  # noqa: BLE001 -- one channel failing must not drag down
                 # the whole result (degrade to the other channel)
                 continue
@@ -168,7 +190,11 @@ class HybridBackend:
                 candidates[key] = candidates.get(key, 0.0) + 1.0 / (self.rrf_k + rank)
                 found[key] = hit.chunk
         ordered = sorted(candidates.items(), key=lambda kv: -kv[1])[:top_k]
-        return [Hit(chunk=found[key], score=score) for key, score in ordered]
+        # Belt and braces: even if a channel ignored the principal, the fused
+        # result is filtered before it leaves.
+        return acl.filter_hits(
+            [Hit(chunk=found[key], score=score) for key, score in ordered], principal
+        )
 
     def coverage(self, query: str) -> float:
         """The coverage gate reuses BM25 token coverage — no gate on the semantic side,

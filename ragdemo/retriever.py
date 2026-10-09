@@ -145,10 +145,16 @@ def build_index(chunks: list[Chunk], backend: str | None = None) -> Backend:
     back to BM25 when vector dependencies are missing.
 
     backend: bm25 (default, zero deps) | vector (FAISS) | hybrid (BM25 ⊕ vector, RRF fusion)
+
+    An unknown name raises rather than silently serving BM25: a misconfigured
+    backend name that quietly returned a different retrieval stack would be
+    indistinguishable from the one the operator asked for.
     """
     from .config import RETRIEVAL_BACKEND  # lazy import avoids a config/retriever circular dep
 
     backend = backend or RETRIEVAL_BACKEND
+    if backend == "bm25":
+        return Bm25Backend(chunks=chunks)
     if backend in ("vector", "hybrid"):
         try:
             from .vector import build_hybrid_backend, build_vector_backend
@@ -161,4 +167,5 @@ def build_index(chunks: list[Chunk], backend: str | None = None) -> Backend:
             import sys
 
             print(f"[retriever] vector backend unavailable ({exc}); falling back to BM25", file=sys.stderr)
-    return Bm25Backend(chunks=chunks)
+            return Bm25Backend(chunks=chunks)
+    raise ValueError(f"unknown retrieval backend {backend!r}; expected bm25 | vector | hybrid")

@@ -26,6 +26,7 @@ not as a slide deck.
 | v4b — Delegated authority | Supervisor/worker orchestration where every gate is re-evaluated per worker call | ✅ Shipped |
 | v4d — Permission-aware retrieval | Chunks inherit an ACL from their source; retrieval pre-filters by principal before ranking | ✅ Shipped |
 | v4c — Resilience | Bounded retry with exponential backoff, and an explicit retryable / never-retryable taxonomy | ✅ Shipped |
+| v4a — Evaluation that can discriminate | Hardened two-slice golden set; multi-backend comparison with cost columns; backend contract tests | ✅ Shipped |
 
 ## The three gates
 
@@ -118,7 +119,7 @@ Python 3.12, no cloud dependencies:
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q                    # 61 passed, 0 skipped
+python -m pytest -q                    # 136 passed, 0 skipped (dense-backend tests skip without a model)
 uvicorn api.main:app --reload          # or: make run
 # → http://localhost:8000/docs  (POST /ask)
 ```
@@ -137,14 +138,33 @@ The default corpus (`data/corpus/`, five short governance documents) is in
 (Latin words + CJK unigrams/bigrams), and Chinese text is the hard case for
 lexical search. All code, comments, API surface and docs are in English.
 
-| Backend | recall@5 | top1 | Notes |
-|---|---|---|---|
-| BM25 (default) | 20/20 | 19/20 | zero-dependency, Okapi k1=1.5 b=0.75 |
-| vector (FAISS) | 20/20 | 20/20 | `intfloat/multilingual-e5-small`, normalized IP = cosine |
-| hybrid (RRF) | 20/20 | 19/20 | RRF k=60, rank-based fusion |
+| Backend | recall@5 | top1 | MRR | paraphrase recall@5 | build | ms/query |
+|---|---|---|---|---|---|---|
+| BM25 (default) | 59/63 | 39/63 | 0.735 | 39/43 | ~0 s | 0.4 |
+| vector (FAISS) | **62/63** | 42/63 | 0.776 | 42/43 | 4–60 s¹ | 28 |
+| hybrid (RRF) | 61/63 | 42/63 | **0.782** | 41/43 | 4–60 s¹ | 28 |
 
-At 15 chunks all backends are saturated, so these numbers demonstrate a
-**working, switchable evaluation pipeline**, not a superiority claim.
+¹ Build time is dominated by the one-time embedding-model load, paid by
+whichever dense backend is built first in the process (cold ~40–60 s, warm ~4 s).
+Per-query cost is ~70× BM25's, which is the honest price of semantic recall.
+
+The golden set is **two-slice by design**. 20 questions quote the corpus
+vocabulary; 43 are colloquial paraphrases with deliberately low lexical overlap
+(each carries an `anchor` explaining why the expected source is the right one).
+The original 20-question set was saturated — BM25 scored 20/20, so no
+comparison could show anything but "all backends tie". After hardening:
+
+- every recall@5 miss BM25 makes is a paraphrase question;
+- all three backends miss `断网了还能不能继续用` — the offline-deployment chunk
+  is far from the colloquial phrasing both lexically and semantically. Reported
+  as a finding, not smoothed over;
+- dense retrieval buys +3 recall@5 and +3 top1 at ~70× the per-query cost; the
+  hybrid fusion is the best ranker (MRR) but is not the best recall — the two
+  channels disagree, and RRF averages the disagreement.
+
+At 15 chunks this demonstrates a **working, switchable, honest evaluation
+pipeline** — not a superiority claim. The scale experiment below is where real
+separation shows.
 
 ### Scale experiment (BM25 vs hybrid on ~1k chunks)
 
@@ -168,6 +188,7 @@ off-the-shelf product provides.
 
 ```bash
 make eval            # default corpus + golden_set.json (reproducible from a fresh clone)
+python evaluation/run_eval.py --backends bm25 vector hybrid   # the full comparison
 ```
 
 ## Governance
@@ -187,7 +208,7 @@ ragdemo/             retrieval, citation, refusal, audit, policy, assets, LLM cl
 api/main.py          FastAPI surface (/ask, /health, /audit)
 ui/                  Streamlit demo UI
 tools/*.yaml         permission scopes + asset license policy
-evaluation/          golden sets + eval runner (recall@5, top1)
+evaluation/          golden sets + eval runner (recall@5, top1, MRR, cost columns)
 tests/               61 tests incl. governance behavior + cross-process state persistence
 data/corpus/         default demo corpus (Chinese, 5 docs / 15 chunks)
 ```

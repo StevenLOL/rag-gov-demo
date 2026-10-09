@@ -11,7 +11,7 @@ Status convention follows the README layer table. Reviewed and re-ordered
 | **v4b** | Multi-agent orchestration: does authority survive delegation? | `agents/supervisor.py`, reuse `graph.py` gates | none | ✅ shipped |
 | **v4d** | Permission-aware retrieval (pre-filter) | `ragdemo/acl.py`, `ragdemo/chunker.py`, `ragdemo/retriever.py`, `ragdemo/citation.py` | none | ✅ shipped |
 | **v4c** | Resilience: retry with backoff | `ragdemo/retry.py`, `ragdemo/llm.py` | none | ✅ shipped |
-| **v4a** | Pluggable retrieval backends + comparative evaluation | `ragdemo/retriever.py`, `evaluation/` | new optional dependency | not started |
+| **v4a** | Pluggable retrieval backends + comparative evaluation | `ragdemo/retriever.py`, `evaluation/` | none (local model optional) | ✅ shipped |
 
 ---
 
@@ -276,14 +276,38 @@ changes.
    the engine. A backend that retrieves marginally better but adds 200 MB and
    4 seconds of cold start has not obviously won.
 
+### Design decisions actually taken
+
+- **The blocker was real and the hardening worked.** 43 paraphrase questions
+  were added to the 20 verbatim ones (each carrying an `anchor` justifying its
+  expected source, so the golden set stays reviewable). BM25 dropped from a
+  meaningless 20/20 to 59/63 recall@5, 39/63 top1, MRR 0.735 — every miss is a
+  paraphrase, which is precisely the failure mode lexical search is expected to
+  have.
+- **No new dependency was needed** — the vector and hybrid backends already
+  existed behind the `Backend` protocol. v4a therefore became: harden the eval,
+  extend the runner (MRR + cost columns + slice breakdown), and test the
+  contract every backend must honour.
+- **A backend contract is a test suite, not a convention.**
+  `tests/test_backend_contract.py` runs the same assertions against every
+  backend `build_index` can return: `principal` is accepted (the permission
+  filter is part of the protocol), results are ranked/capped/deterministic,
+  `coverage()` exists for the refusal gate, and the dense backends hide but
+  never displace visible chunks.
+- **One behaviour change: an unknown backend name now raises.** Previously a
+  typo in `RETRIEVAL_BACKEND` silently served BM25 — a configuration bug that
+  looks exactly like the intended configuration.
+- **The comparison surfaced an honest finding:** all three backends miss
+  `断网了还能不能继续用`. Reported in the README instead of dropping the question.
+
 ### Done when
 
-- [ ] Golden set hardened; BM25 baseline no longer saturated.
-- [ ] Backends selectable via `RETRIEVAL_BACKEND` with no code change.
-- [ ] BM25 remains the default; `/health` still reports the active backend.
-- [ ] A comparison table exists with recall@5 / top1 plus the cost columns.
-- [ ] New tests cover each new backend's contract compliance.
-- [ ] Full suite still green (see "Local test command" below).
+- [x] Golden set hardened; BM25 baseline no longer saturated.
+- [x] Backends selectable via `RETRIEVAL_BACKEND` with no code change.
+- [x] BM25 remains the default; `/health` still reports the active backend.
+- [x] A comparison table exists with recall@5 / top1 plus the cost columns.
+- [x] New tests cover each new backend's contract compliance.
+- [x] Full suite still green (see "Local test command" below).
 
 ---
 

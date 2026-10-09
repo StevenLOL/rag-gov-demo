@@ -73,10 +73,14 @@ and per-delay capped, and only allow-listed transient failures are retried.
 
 - Without a connected LLM, answers are extractive (quoted passages with
   citations); there is no generative fluency.
-- Retrieval comparisons are corpus-bound: at 15 chunks all three backends
-  saturate (recall@5 20/20; top1 19/20, 20/20, 19/20), so no backend
-  superiority can be claimed from the default corpus alone. A larger-corpus
-  experiment with a root-caused failure mode is described in the README.
+- Retrieval comparisons are corpus-bound: at 15 chunks the quality differences
+  are a few questions wide, so no backend superiority can be claimed from the
+  default corpus alone. The golden set is now two-slice (verbatim + paraphrase)
+  to give the comparison headroom, and the paraphrase slice is reported
+  separately; a larger-corpus experiment with a root-caused failure mode is
+  described in the README. The paraphrase questions are hand-written and
+  single-annotator: their `expected_source` labels are justified by an `anchor`
+  note per question, but no second annotator has checked them.
 - Audit is a single-machine JSONL file; hardening (signature, Postgres
   migration) is tracked as future work.
 - **Asset classification uses keyword substring matching, not semantic

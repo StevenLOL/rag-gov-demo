@@ -10,7 +10,7 @@ Status convention follows the README layer table. Reviewed and re-ordered
 |---|---|---|---|---|
 | **v4b** | Multi-agent orchestration: does authority survive delegation? | `agents/supervisor.py`, reuse `graph.py` gates | none | ✅ shipped |
 | **v4d** | Permission-aware retrieval (pre-filter) | `ragdemo/acl.py`, `ragdemo/chunker.py`, `ragdemo/retriever.py`, `ragdemo/citation.py` | none | ✅ shipped |
-| **v4c** | Resilience: retry with backoff | `ragdemo/llm.py` | none | not started |
+| **v4c** | Resilience: retry with backoff | `ragdemo/retry.py`, `ragdemo/llm.py` | none | ✅ shipped |
 | **v4a** | Pluggable retrieval backends + comparative evaluation | `ragdemo/retriever.py`, `evaluation/` | new optional dependency | not started |
 
 ---
@@ -176,12 +176,33 @@ have succeeded. That is the gap worth closing — nothing else in this layer.
 4. Every retry and every exhaustion must be observable: land it in the same
    audit stream the rest of the system already writes to.
 
+### Design decisions actually taken
+
+- **The taxonomy is the deliverable, not the loop.** Retrying is easy; deciding
+  what may be retried is the engineering. The rule is *transient by allow-list,
+  deterministic by default*: anything not explicitly known to be transient is
+  not retried, so an unrecognised fault is never amplified.
+- **A policy denial is never retried, and there is a type for it.**
+  `ragdemo/retry.py` defines `PolicyRefusal(NonRetryable)`. A denial is a
+  *decision*; re-asking would record one decision as several in the audit log,
+  which is indistinguishable from "the system kept trying until it got through".
+- **Bounded twice.** `max_attempts` bounds how many times we ask;
+  `max_total_wait` bounds how long the caller waits. A cap on attempts alone is
+  not a cap on latency — when the next backoff would exceed the remaining
+  budget the retry is abandoned *before* sleeping, so the caller never waits
+  past the budget.
+- **Only the HTTP call is retried.** Resolving the model is not: a service with
+  no model will not grow one in the next 500 ms.
+- **No failure means no trace.** With a healthy call there is exactly one
+  request and zero audit events — asserted, so the happy path cannot silently
+  start retrying.
+
 ### Done when
 
-- [ ] Retry is bounded, backoff is exponential, and both are configurable.
-- [ ] Deterministic refusals are never retried (asserted by test).
-- [ ] Retry attempts and exhaustions appear in the audit stream.
-- [ ] Existing behaviour with no failures is unchanged.
+- [x] Retry is bounded, backoff is exponential, and both are configurable.
+- [x] Deterministic refusals are never retried (asserted by test).
+- [x] Retry attempts and exhaustions appear in the audit stream.
+- [x] Existing behaviour with no failures is unchanged.
 
 ---
 

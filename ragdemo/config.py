@@ -40,6 +40,16 @@ AUDIT_LOG = Path(os.getenv("AUDIT_LOG", BASE_DIR / "data" / "audit" / "audit.jso
 # to an in-memory version (for test isolation).
 STATE_DB = Path(os.getenv("STATE_DB", BASE_DIR / "data" / "audit" / "state.db"))
 
+# ---- Resilience (v4c): bounded retry with exponential backoff ----
+# Retries are capped twice: how many times we ask, and how long the caller waits.
+# A cap on attempts alone is not a cap on latency.
+LLM_MAX_ATTEMPTS = int(os.getenv("LLM_MAX_ATTEMPTS", 3))
+LLM_BACKOFF_BASE = float(os.getenv("LLM_BACKOFF_BASE", 0.5))
+LLM_BACKOFF_MAX = float(os.getenv("LLM_BACKOFF_MAX", 4.0))
+LLM_MAX_TOTAL_WAIT = float(os.getenv("LLM_MAX_TOTAL_WAIT", 10.0))
+# Full jitter spreads retries across callers; off makes the schedule reproducible
+LLM_RETRY_JITTER = os.getenv("LLM_RETRY_JITTER", "true").lower() == "true"
+
 # ---- Permission-aware retrieval (v4d) ----
 # Default ACL for a document that declares none in its front matter. "*" keeps an
 # unclassified corpus behaving exactly as it did before the filter existed; in a

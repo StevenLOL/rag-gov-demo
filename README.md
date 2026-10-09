@@ -25,6 +25,7 @@ not as a slide deck.
 | v3 — Controllable autonomy | LangGraph `interrupt()` approval, least-privilege scopes, IMDA-style governance docs | ✅ v3a shipped; approval-card UI pending |
 | v4b — Delegated authority | Supervisor/worker orchestration where every gate is re-evaluated per worker call | ✅ Shipped |
 | v4d — Permission-aware retrieval | Chunks inherit an ACL from their source; retrieval pre-filters by principal before ranking | ✅ Shipped |
+| v4c — Resilience | Bounded retry with exponential backoff, and an explicit retryable / never-retryable taxonomy | ✅ Shipped |
 
 ## The three gates
 
@@ -89,6 +90,27 @@ Refusals caused by the filter are worded exactly like "nothing matched" —
 otherwise the refusal itself becomes an existence oracle for restricted
 material. `docs/RAI.md` lists what this does *not* cover (no authentication,
 and the dense path filters before truncation rather than before scoring).
+
+## Retry is an allow-list, not a while-loop
+
+A warm local model occasionally hiccups, and one more attempt is often enough.
+But retrying the *wrong* failure is worse than not retrying: re-asking a
+deterministic "no" records one decision as several in the audit log.
+
+| Failure | Retried | Why |
+|---|---|---|
+| connection refused / timeout | yes | transient by nature |
+| HTTP 429, 5xx | yes | server-side or rate-limit pressure |
+| HTTP 4xx (bad request, model not found) | **no** | the same request fails identically |
+| malformed response body | **no** | retrying cannot change the shape |
+| a policy denial | **no** | it is a decision, not a failure |
+| anything unrecognised | **no** | never amplify an unknown fault |
+
+Bounded twice: `max_attempts` caps how many times we ask, `max_total_wait`
+caps how long the caller waits — when the next backoff would exceed the
+remaining budget the retry is abandoned *before* sleeping. Every scheduled
+retry and every exhaustion lands in the audit stream; a healthy call produces
+exactly one request and zero events.
 
 ## Quick start
 

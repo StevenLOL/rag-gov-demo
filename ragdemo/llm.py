@@ -16,6 +16,12 @@ exist):
 Failure semantics: this module never swallows errors — connection
 failures/timeouts raise exceptions, and citation.py degrades to extractive
 citation mode.
+
+Resilience (v4c): the generation call is wrapped in a **bounded** retry with
+exponential backoff. Only failures the taxonomy in `ragdemo/retry.py` marks
+transient are retried; a 4xx, a malformed body or a policy refusal is never
+retried, because re-asking a deterministic "no" would misrepresent it in the
+audit log. Both the attempt count and the total wait are capped.
 """
 
 from __future__ import annotations
@@ -23,7 +29,13 @@ from __future__ import annotations
 import httpx
 
 from .chunker import Chunk
+from .retry import RetryPolicy, SchemaError, run as run_with_retry
 from .config import (
+    LLM_BACKOFF_BASE,
+    LLM_BACKOFF_MAX,
+    LLM_MAX_ATTEMPTS,
+    LLM_MAX_TOTAL_WAIT,
+    LLM_RETRY_JITTER,
     OLLAMA_KEEP_ALIVE,
     OLLAMA_MODEL,
     OLLAMA_NUM_PREDICT,
@@ -133,9 +145,33 @@ def warmup(model: str | None = None) -> bool:
         return False
 
 
-def generate(question: str, chunks: list[Chunk], model: str | None = None) -> str:
+def default_policy() -> RetryPolicy:
+    """Retry bounds for generation, from configuration.
+
+    "Configurable" is the point: a local model that takes ~34s to cold start
+    wants a different budget from a remote endpoint that fails fast.
+    """
+    return RetryPolicy(
+        max_attempts=LLM_MAX_ATTEMPTS,
+        base_delay=LLM_BACKOFF_BASE,
+        max_delay=LLM_BACKOFF_MAX,
+        max_total_wait=LLM_MAX_TOTAL_WAIT,
+        jitter=LLM_RETRY_JITTER,
+    )
+
+
+def generate(
+    question: str,
+    chunks: list[Chunk],
+    model: str | None = None,
+    policy: RetryPolicy | None = None,
+) -> str:
     """Call local Ollama to generate an answer with citation markers; raises on
-    failure (upper layer degrades)."""
+    failure (upper layer degrades).
+
+    Only the HTTP call is retried — resolving the model is not, because a
+    service with no model is not going to grow one in the next 500ms.
+    """
     target = model or resolve_model()
     if target is None:
         raise RuntimeError("Ollama unavailable or no usable model found locally")
@@ -154,8 +190,20 @@ def generate(question: str, chunks: list[Chunk], model: str | None = None) -> st
             # hitting the timeout
         },
     }
-    response = httpx.post(
-        f"{OLLAMA_URL}/api/generate", json=payload, timeout=OLLAMA_TIMEOUT
+    def _call() -> str:
+        response = httpx.post(
+            f"{OLLAMA_URL}/api/generate", json=payload, timeout=OLLAMA_TIMEOUT
+        )
+        response.raise_for_status()
+        body = response.json()
+        if "response" not in body:
+            # Explicit, and therefore never retried: a body without the field
+            # will look the same on the next attempt.
+            raise SchemaError("Ollama response has no 'response' field")
+        return str(body["response"]).strip()
+
+    return run_with_retry(
+        _call,
+        policy=policy or default_policy(),
+        label=f"ollama.generate:{target}",
     )
-    response.raise_for_status()
-    return response.json()["response"].strip()

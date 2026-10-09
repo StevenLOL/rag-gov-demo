@@ -13,7 +13,11 @@
    data classes. See `tools/scopes.yaml`.
 5. **Testable governance** — governance behavior is asserted in CI.
    See `tests/test_governance.py`.
-6. **Permission-aware retrieval** — chunks inherit an ACL from their source
+6. **Bounded, audited retry** — transient failures are retried with exponential
+   backoff; deterministic ones (4xx, malformed body, policy denial) never are,
+   because re-asking a "no" would misrepresent it in the audit log. See
+   `ragdemo/retry.py` and `tests/test_retry.py`.
+7. **Permission-aware retrieval** — chunks inherit an ACL from their source
    document, retrieval takes a principal, and candidates are filtered *before*
    ranking, so unauthorised content never reaches the model. See
    `ragdemo/acl.py` and `tests/test_acl.py`.
@@ -48,6 +52,22 @@
   computed over the whole corpus vocabulary, not over the authorised subset, so
   a query whose only matches are restricted can still report a high coverage
   figure. Existence disclosure through this channel is not currently closed.
+
+### Retry: what is enforced, and what is not
+
+**Enforced**: attempts are capped, total wait is capped, backoff is exponential
+and per-delay capped, and only allow-listed transient failures are retried.
+
+**Not enforced**:
+
+- **Retry does not make a flaky model reliable** — it converts one class of
+  transient failure into an occasional success and no more. A model that
+  times out consistently will still exhaust the budget and degrade.
+- **The retry is per-call, not per-request.** A request that fans out to several
+  generations can spend the budget several times over.
+- **No circuit breaker.** Repeated exhaustion does not stop the system from
+  calling a dead endpoint on the next request; the `/health` probe is
+  availability information, not a breaker.
 
 ## Known limitations (honest list)
 

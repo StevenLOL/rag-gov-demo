@@ -109,6 +109,18 @@ def test_coverage_gate_exists_on_every_backend(built):
     assert 0.0 <= value <= 1.0
 
 
+def test_score_floor_is_declared_by_the_backend(built):
+    """The score gate must run on the backend's own scale.
+
+    Regression guard: the API used to pass the BM25 threshold (2.0) to every
+    backend, which refused every answer on the vector backend (cosine <= 1.0)
+    and on hybrid (RRF <= ~0.03). The floor therefore lives on the backend."""
+    name, index, _ = built
+    floor = getattr(index, "min_score", None)
+    assert isinstance(floor, float), f"{name} must declare min_score on its own score scale"
+    assert floor >= 0.0
+
+
 def test_unknown_backend_name_raises_instead_of_serving_something_else():
     """A typo in RETRIEVAL_BACKEND must fail loudly: quietly returning a
     different retrieval stack than the operator asked for is a configuration

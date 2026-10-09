@@ -155,6 +155,15 @@ class FaissBackend:
         by a cosine threshold (see citation.answer_question)."""
         return 1.0
 
+    @property
+    def min_score(self) -> float:
+        """Refusal-gate floor on THIS backend's scale: normalized inner product
+        is cosine, in [-1, 1], so a BM25-scale floor (2.0) would refuse every
+        answer. Declared here, not hardcoded by callers."""
+        from .config import VECTOR_MIN_SCORE  # lazy, keeps faiss optional
+
+        return VECTOR_MIN_SCORE
+
 
 @dataclass
 class HybridBackend:
@@ -200,6 +209,14 @@ class HybridBackend:
         """The coverage gate reuses BM25 token coverage — no gate on the semantic side,
         avoiding false refusals on synonymous paraphrases."""
         return getattr(self.bm25, "coverage", lambda _q: 1.0)(query)
+
+    @property
+    def min_score(self) -> float:
+        """No absolute score floor: RRF scores are rank-derived (max ~2/(k+1)),
+        not a confidence scale, so any numeric threshold on them would be
+        arbitrary. Refusal for this backend rides on the coverage gate (BM25
+        token overlap); a per-channel floor is future work."""
+        return 0.0
 
 
 def build_vector_backend(chunks: list[Chunk]) -> Backend:

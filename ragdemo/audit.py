@@ -53,8 +53,14 @@ def append_event(event_type: str, payload: dict, log_path: Path | None = None) -
 
 
 def read_events(log_path: Path | None = None) -> list[dict]:
-    """Read all audit events (shared by the /audit endpoint and future governance reports)."""
-    path = log_path or AUDIT_LOG
+    """Read all audit events (shared by the /audit endpoint and future governance reports).
+
+    Resolution order mirrors append_event exactly -- explicit path, then the
+    process-level active stream, then the configured default. Write and read
+    must agree on the destination: a read side that ignored the active stream
+    would show the /audit endpoint one log while events land in another.
+    """
+    path = log_path or _ACTIVE_LOG or AUDIT_LOG
     if not path.exists():
         return []
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]

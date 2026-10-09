@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 from ragdemo import acl, audit, citation, llm
 from ragdemo.chunker import load_corpus
-from ragdemo.config import CORPUS_DIR, REFUSAL_COVERAGE, RETRIEVAL_BACKEND, RETRIEVAL_MIN_SCORE
+from ragdemo.config import CORPUS_DIR, REFUSAL_COVERAGE, RETRIEVAL_BACKEND
 from ragdemo.retriever import build_index
 
 app = FastAPI(title="rag-gov-demo", version="0.1.0")
@@ -119,7 +119,9 @@ def ask(req: AskRequest) -> AskResponse:
         _index,
         generate=generate,  # When None, citation falls back to extractive mode
         refusal_coverage=REFUSAL_COVERAGE,
-        min_score=RETRIEVAL_MIN_SCORE,
+        # min_score is deliberately NOT passed here: the score gate must run on
+        # the backend's own scale (BM25 absolute score vs cosine vs RRF), and
+        # only the backend knows which one it scores in.
         principal=principal,
     )
     audit.append_event(

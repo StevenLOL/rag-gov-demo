@@ -96,6 +96,17 @@ class Bm25Backend:
             return 0.0
         return math.log((self.n_docs - df + 0.5) / df + 1.0)
 
+    @property
+    def min_score(self) -> float:
+        """Refusal-gate floor on THIS backend's scale (BM25 absolute score).
+
+        Declared by the backend, not hardcoded by callers: each backend knows
+        what scale its scores live on, and one caller-side number cannot serve
+        BM25, cosine and RRF at once."""
+        from .config import RETRIEVAL_MIN_SCORE  # lazy, same reason as build_index
+
+        return RETRIEVAL_MIN_SCORE
+
     def search(self, query: str, top_k: int = 5, principal: Principal | None = None) -> list[Hit]:
         """Return the top_k hits sorted by BM25 score in descending order.
 

@@ -1,8 +1,11 @@
 """Citation and refusal (v1 core: productizing "honesty").
 
-Decision flow (two-gate safety net; thresholds in config.py):
+Decision flow (two-gate safety net):
 1. Coverage gate: if the query tokens' coverage in the corpus vocabulary < REFUSAL_COVERAGE → refuse;
-2. Score gate: if the BM25 top-1 score < RETRIEVAL_MIN_SCORE → refuse;
+2. Score gate: if the top-1 score is below the backend's own declared floor
+   (`index.min_score` -- each backend declares the scale its scores live on:
+   BM25 absolute score, vector cosine, hybrid RRF declares none) → refuse.
+   An explicit `min_score` argument overrides the backend's declaration.
 3. Both gates passed → generate/extract the answer and attach the citation list.
 
 A refusal is not an error but a first-class response type: returns refused=True plus an
@@ -67,7 +70,7 @@ def answer_question(
     index: Bm25Backend,
     generate=None,
     refusal_coverage: float = 0.5,
-    min_score: float = 2.0,
+    min_score: float | None = None,
     principal: Principal | None = None,
 ) -> Answer:
     """Main Q&A entry point.
@@ -75,6 +78,10 @@ def answer_question(
     generate:  optional (question, context_chunks) -> str generation function (provided by
                llm.py). When None or when the call fails, falls back to the extractive path
                -- the demo never becomes unavailable just because a model is missing.
+    min_score: optional explicit override of the score-gate floor. When None
+               (the default), the backend's own declared floor (`index.min_score`)
+               is used -- a BM25 score and a cosine similarity live on different
+               scales, and one hardcoded number cannot serve both.
     principal: who is asking. Passed straight to the backend, which filters before
                ranking; None means "no filtering" (whole corpus visible).
     """
@@ -106,14 +113,18 @@ def answer_question(
             ),
         )
 
-    # Gate 2: BM25 score
+    # Gate 2: retrieval score, on the backend's own scale. The threshold is a
+    # property of the backend, not of this function: a hardcoded BM25 floor
+    # (2.0) applied to a cosine-scale backend (scores <= 1.0) refused every
+    # answer, which is exactly the bug this parameterization fixes.
+    threshold = min_score if min_score is not None else getattr(index, "min_score", 0.0)
     top_score = hits[0].score
-    if top_score < min_score:
+    if top_score < threshold:
         return Answer(
             question=question,
             refused=True,
             refusal_reason=(
-                f"Top passage score {top_score:.1f} is below the {min_score:.1f} "
+                f"Top passage score {top_score:.4g} is below the {threshold:.4g} "
                 "threshold; insufficient grounding in the corpus, refusing to fabricate."
             ),
         )

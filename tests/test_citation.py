@@ -36,6 +36,39 @@ def test_refuses_low_score_question():
     assert "score" in result.refusal_reason
 
 
+def test_score_gate_uses_the_backend_declared_floor():
+    """Regression: the caller used to impose the BM25 scale (2.0) on every
+    backend, so a cosine-scale backend (scores <= 1.0) refused every answer.
+    The floor must come from the backend itself."""
+    from ragdemo.chunker import Chunk
+    from ragdemo.retriever import Hit
+
+    class _CosineBackend:
+        """A backend whose scores live on the cosine scale, like FaissBackend."""
+
+        min_score = 0.35
+
+        def __init__(self, top_score: float, chunk: Chunk):
+            self._top_score = top_score
+            self._chunk = chunk
+
+        def search(self, query, top_k=5, principal=None):
+            return [Hit(chunk=self._chunk, score=self._top_score)]
+
+        def coverage(self, query):
+            return 1.0  # gate 1 always passes; the test isolates gate 2
+
+    chunk = Chunk(chunk_id="fake#0", source="fake.md", title="t", text="body")
+
+    answered = answer_question("anything", _CosineBackend(0.8, chunk))
+    assert not answered.refused, "0.8 >= the backend's 0.35 floor must not be refused"
+    assert answered.citations
+
+    refused = answer_question("anything", _CosineBackend(0.1, chunk))
+    assert refused.refused, "0.1 < the backend's 0.35 floor must be refused"
+    assert "score" in refused.refusal_reason
+
+
 def test_degrades_to_extractive_when_llm_fails():
     def broken_generate(question, chunks):
         raise RuntimeError("Ollama is not running")

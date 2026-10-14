@@ -1,0 +1,4 @@
+# Keep line endings consistent: store and check out LF on every platform.
+# Without this, a Windows contributor commits CRLF and a Linux contributor
+# commits LF, and every diff for that file lights up as a full-file rewrite.
+* text=auto eol=lf

@@ -1,0 +1,68 @@
+# tools/asset_policy.yaml — "authorization + classification" policy for asset
+# packages (second instance of governance-as-code)
+#
+# Why a separate table instead of hardcoding it in a script:
+#   Authorization is policy, not logic. Registering a package, expiring an
+#   authorization, or widening the allowed use should be "edit config + pass
+#   review", not "edit code + redeploy". Config-as-policy is reviewable,
+#   testable, and assertable in CI (see the authorization-gate cases in
+#   tests/test_assets.py).
+#
+# Division of labor with tools/scopes.yaml (the two gates do not substitute
+# for each other):
+#   scopes.yaml       = who may call which tool (permission + risk level)
+#   this file         = what these assets may be used for (license + use whitelist)
+#   Having permission != having authorization: even a whitelisted tool is
+#   denied when the declared use falls outside the license.
+#
+# Data sources (empirical, not invented):
+#   The license terms of tome-1.7.6-gfx are quoted verbatim from the
+#   COPYING-MEDIA file at the root of that package. Classification keywords
+#   follow the same criteria as our prior empirical run, which processed
+#   306 MB / 21,161 PNGs successfully.
+
+packages:
+  tome-1.7.6-gfx:
+    # Local and machine-specific: point this at your own copy of the pack
+    # (left empty here so the repository carries no host path; the asset scan
+    # simply reports the package as unavailable until it is filled in).
+    path: ""
+    format: team-zip            # .team is actually a standard zip; all PNGs live under data/gfx/
+    license: TE4-COPYING-MEDIA
+    allowed_use: [reference]    # "research / style reference" only
+    denied_use: [ship, commercial]
+    note: >
+      Verbatim from COPYING-MEDIA: "All the medias located in all the "/data/gfx" folders are
+      granted to use with the Tales of Maj'Eyal game only." — in-game use of ToME only.
+      This project may use the assets for style reference and feasibility research only;
+      shipping them requires prior authorization (contact darkgod@te4.org).
+
+  selfmade-assets:
+    # Local, machine-specific: fill in your own directory of self-produced art.
+    path: ""
+    format: directory
+    license: own
+    allowed_use: [reference, ship]
+    denied_use: []
+    note: >
+      Self-produced artwork (3,367 images verified under the assets directory);
+      no third-party license constraints; commercial use permitted.
+
+# Classification keywords: 13 empirically verified categories, migrated to YAML
+# so that "policy does not hide in a script".
+# Matching is "lowercased path contains the keyword" — simple, explainable,
+# auditable (no semantic model, avoiding a black box).
+categories:
+  grassland: [grass, meadow, steppe, plain]
+  desert:    [sand, dune, arid]
+  snow:      [snow, ice, frozen, glacial]
+  jungle:    [jungle, tropical, palm]
+  water:     [water, sea, river, lake, shore]
+  trees:     [tree, willow, oak, pine, forest, wood]
+  mountains: [mountain, hill, rock, cliff, granite]
+  ground:    [road, floor, ground, path, cobble]
+  buildings: [wall, hut, house, door, roof, pillar]
+  worldmap:  [wm_, worldmap]
+  objects:   [/object/]
+  characters: [/npc/, /player/]
+  ui:        [/ui/, dark-ui, metal-ui]

@@ -1,0 +1,25 @@
+{
+  "package": "tome-1.7.6-gfx",
+  "size_mb": 292.2,
+  "total_images": 21161,
+  "categories": {
+    "grassland": 249,
+    "desert": 132,
+    "snow": 575,
+    "jungle": 177,
+    "water": 158,
+    "trees": 1437,
+    "mountains": 322,
+    "ground": 506,
+    "buildings": 635,
+    "worldmap": 226,
+    "objects": 880,
+    "characters": 13146,
+    "ui": 246
+  },
+  "scan_seconds": 0.8,
+  "license": "TE4-COPYING-MEDIA",
+  "allowed_use": [
+    "reference"
+  ]
+}

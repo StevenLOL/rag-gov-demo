@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Runtime artifacts (keep the audit directory structure, ignore contents)
+data/audit/*.jsonl
+
+# pytest temp root (pinned inside the repo on some Windows setups; see
+# docs/ROADMAP.md "Local test command")
+.pytest_tmp/
+
+# Durable LangGraph checkpointer (SqliteSaver writes this at runtime)
+data/audit/*.db
+data/audit/state.db
+
+# Local vector index cache (FAISS backend)
+*.faiss
+*.npy
+
+# Large experimental corpus: 37 legacy-system reverse-engineering notes,
+# produced by a separate project. Kept locally, excluded from the repo.
+# Re-run the scale experiment by pointing CORPUS_DIR at any local corpus.
+data/corpus_legacy/
+evaluation/golden_set_legacy.json
+
+# Environment variables
+.env
+
+# v3b asset-export demo output (rebuildable on every demo run)
+_out/
+
+# OS
+Thumbs.db
+.DS_Store
